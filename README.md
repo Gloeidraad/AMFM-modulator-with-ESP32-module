@@ -6,3 +6,9 @@ The design has been made with KiCad 7.0. I also added some of the specific 3D mo
 
 Note: In many countries it is not allowed to build radio transmitters. Although this design has a range of only a 
 few meters, building it is at your own risk.
+
+Additional information can be found at: 
+
+https://www.transistorforum.nl/forum/index.php?id=77783
+
+It is in Dutch, so please use some translate program...
