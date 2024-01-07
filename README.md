@@ -4,7 +4,5 @@ The output is connected to a simple FM/AM modulator. The player is intended for 
 
 The design has been made with KiCad 7.0. I also added some of the specific 3D models.
 
-Software will follow later...
-
 Note: In many countries it is not allowed to build radio transmitters. Although this design has a range of only a 
 few meters, building it is at your own risk.
