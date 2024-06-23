@@ -2,17 +2,22 @@
 // Increase size:
 // https://github.com/espressif/arduino-esp32/issues/1906
 
-#include <Audio.h>
-#include <OneButton.h>
+#include <esp_idf_version.h>
+
+#if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(4, 0, 0)
+  #error Cannot be built with version 1.0.6 or older
+#endif
+
 #include <driver/dac.h>
 
-#include "src/board.h"
+#include "src/AudioI2S/Audio.h"
+#include "src/OneButton/OneButton.h"
+#include "src/Hardware/board.h"
 #include "src/settings.h"
 #include "src/ChipInfo.h" 
-#include "src/NFOR_SSD1306.h"
-#include "src/CD4015B.h"
-#include "src/PT8211.h"
-#include "src/KT0803X.h"
+#include "src/I2C_Scanner.h"
+#include "ESP32CompositeVideo.h"
+
 #include "Player.h"
 #include "Display.h"
 #include "SimpleWaveGenerator.h"
@@ -20,6 +25,8 @@
 
 SettingsClass      Settings(Wire1,I2C_LOW_CLOCK_SPEED);
 KT0803X_Class      KT0803X(Wire1, PIN_FM_SW, I2C_LOW_CLOCK_SPEED);
+MC44BS373CA_Class  MC44BS373CA(Wire1,I2C_LOW_CLOCK_SPEED);
+ESP32CompositeVideo_Class ESP32CompositeVideo(Wire1,I2C_LOW_CLOCK_SPEED);
 
 SsidSettingsClass  SsidSettings;
 UrlSettingsClass   UrlSettings;
@@ -54,27 +61,37 @@ static void SetAmModLevel(bool update_pin = true) {
 }
 
 static void SetAmDivider(void) {
-  uint8_t AM_ON = Settings.NV.OutputSel != SET_OUTPUT_FM_ONLY;
+  uint8_t AM_ON = Settings.NV.OutputSel & SET_OUTPUT_AM_MASK;
   int divider = Settings.NV.FreqAM / Settings.GridStep() - 1;
-
   CD4015B_WriteByte(divider, AM_ON, 0); 
   DEBUG_MSG_VAL4("AM PLL Divider %d (0x%02X), frequency %d, inh %d\n", divider, divider, Settings.NV.FreqAM, AM_ON);
 }
 
 static void SetOutputSel(void) {
   SetAmDivider();
-  if(Settings.NV.OutputSel != SET_OUTPUT_AM_ONLY) {
-    digitalWrite(PIN_FM_SW, 1);
+  
+  if(Settings.NV.OutputSel & SET_OUTPUT_FM_MASK) {
+    DEBUG_MSG("FM Modulator On\n");
+    //digitalWrite(PIN_FM_SW, 1);
     if(!KT0803X.Start(0)) {
-      Settings.NV.OutputSel = SET_OUTPUT_AM_ONLY;
-      digitalWrite(PIN_FM_SW, 0);
+      DEBUG_MSG("FM Modulator Error\n");
+      Settings.FmPresent = 0;
+      if(Settings.NV.OutputSel & SET_OUTPUT_TV_MASK)
+        Settings.NV.OutputSel = SET_OUTPUT_TV_MASK | SET_OUTPUT_AM_MASK;
+      else
+        Settings.NV.OutputSel = SET_OUTPUT_AM_MASK;
+      //digitalWrite(PIN_FM_SW, 0);
     }
   }
   else {
-    digitalWrite(PIN_FM_SW, 0);
+    DEBUG_MSG("FM Modulator Off\n");
+    KT0803X.Stop();
+    //digitalWrite(PIN_FM_SW, 0);
   }
+  //MC44BS373CA.SetSound(Settings.NV.xxxx, 0);
+  MC44BS373CA.SetRfOff(!(Settings.NV.OutputSel & SET_OUTPUT_TV_MASK), 0); 
+  MC44BS373CA.SetChannel(Settings.NV.TvChannel, 1);
 }
-
 //#define DEBUG_CALCULATE_AM_MOD_OFFSETS
 
 #define MOD_OFFSET_LOW_THRESHOLD     16  // Note: ADC kicks in on at about 0.1 volts, so we need to tune a bit, with Settings.NV.AmTrim
@@ -162,6 +179,32 @@ static void SetFmGainAndFreq(void) {
   KT0803X.SetMono(Settings.NV.FmModType, true);
 }
 
+static void SetTvChannel(void) {
+  MC44BS373CA.NewChannel(Settings.NV.TvChannel, 1);
+  MC44BS373CA.ShowInfo();
+}
+
+static void PrintWifiInfo() {
+  char s[64];
+   //WiFi.printDiag(Serial);
+   sprintf(s, "WiFi TX level: %d (max %d = %sdB)", WiFi.getTxPower(), Settings.GetWifiTxLevel(), Settings.GetWifiTxLevelDB());
+  Serial.println(s);
+}
+
+void SetWifiPower(int pwr, bool force = false) {
+  if(!force && (pwr < 0 || pwr == Settings.NV.WifiTxIndex || pwr > SET_WIFI_TX_MAX)) {
+    pwr = Settings.NV.WifiTxIndex;
+    Serial.print("Wifi TX Power stays at ");
+  }
+  else {
+    Settings.NV.WifiTxIndex = pwr;
+    Serial.print("Changing Wifi TX Power to ");
+    if (Settings.NV.SourceAF == SET_SOURCE_WEB_RADIO)
+      WiFi.setTxPower((wifi_power_t)Settings.GetWifiTxLevel());
+  }
+  Serial.printf("entry %d (value %d = %sdB)\n",pwr, Settings.GetWifiTxLevel(), Settings.GetWifiTxLevelDB());
+}
+
 //=====================================================================//
 //== Local: serial_command parser (for debugging purposes)           ==//
 //=====================================================================//
@@ -188,6 +231,9 @@ static struct {
   { "pwh",    "printwaveformhex", false }, // 14
   { "sys",    "systeminfo"      , false }, // 15
   { "oled",   "oled-display"    , false }, // 16
+  { "wifi",   "wifi-status"     , false }, // 17
+  { "tx",     "wifi-tx-power"   , false }, // 18
+  { "vol",    "volume"          , true  }, // 19
 };
 
 static void serial_command_help(void) {
@@ -199,8 +245,13 @@ static void serial_command_help(void) {
 }
 
 static int find_command_match(String &r) {
-  for(int i = 0; i < sizeof(serial_command_list) / sizeof(serial_command_list[0]); i++) {
-    if(r.equals(serial_command_list[i].shortname) || r.equals(serial_command_list[i].longname)) return i;
+  for(int i = sizeof(serial_command_list) / sizeof(serial_command_list[0]) - 1; i >= 0 ; i--) {
+    if(r.startsWith(serial_command_list[i].shortname) || r.startsWith(serial_command_list[i].longname)) {
+      int len = r.indexOf(' ');
+      if(len > 0) 
+        r = r.substring(len + 1);
+      return i;
+    }
   }
   return -1;
 }
@@ -210,6 +261,7 @@ static void change_player(uint8_t old_id, uint8_t new_id);
 static void parse_command(String &r) { 
   r.trim();
   r.toLowerCase();
+  int len = r.indexOf(' ');
   Serial.print("SERIAL COMMAND: ");
   Serial.println(r);
   switch(find_command_match(r)) {
@@ -228,12 +280,16 @@ static void parse_command(String &r) {
     case 12: Settings.doSoftRestart();    break;
     case 13: Player.WP_PrintDebug(false); break;
     case 14: Player.WP_PrintDebug(true);  break;
-    case 15: PrintChipInfo(0x0F); break;
-    case 16: OLED.Print(); break;
-    default: int vol = r.toInt();
-             if (vol > 0) {
-               Player.SetVolume(vol);
+    case 15: PrintChipInfo(0x0F);         break;
+    case 16: OLED.Print();                break;
+    case 17: PrintWifiInfo();             break;
+    case 18: SetWifiPower(r.toInt());     break;
+    case 19: { int vol = r.toInt();
+               if(vol > 0)
+                 Player.SetVolume(vol);
              }
+             break;
+    default: Serial.println("Unknown Command"); break;
   }
 }
 
@@ -241,18 +297,40 @@ static void parse_command(String &r) {
 //== Local: Timestamps
 //=====================================================================
 
-static uint32_t timestamp_10ms = 0;
-static uint32_t timestamp_1sec = 0;
-static bool     ten_ms_tick    = false;
-static bool     second_tick    = false;
+class TimeStampClass {
+  public:
+    TimeStampClass();
+    void Update(void);
+    uint32_t GetStamp10ms(void) { return timestamp_10ms;    }
+    uint32_t GetStamp1sec(void) { return timestamp_1sec;    } 
+    bool     Get10msTick(void)  { return ten_ms_tick;       }
+    bool     GetSecondTick()    { return second_tick;       }
+    bool     Get4SecTick()      { return four_seconds_tick; }
+  private:
+    uint64_t timestamp_us_prev;
+    uint16_t timestamp_1sec_cnt;
+    uint32_t timestamp_10ms;
+    uint32_t timestamp_1sec;
+    bool     ten_ms_tick;
+    bool     second_tick;
+    bool     four_seconds_tick;
+};
 
-static void UpdateTimestamps(void) {
-  static uint64_t timestamp_us_prev  = 0;
-  static uint16_t timestamp_1sec_cnt = 0;
+TimeStampClass::TimeStampClass() {
+  timestamp_10ms          = 0;
+  timestamp_1sec          = 0;
+  ten_ms_tick             = false;
+  second_tick             = false;
+  four_seconds_tick       = false;
+  timestamp_us_prev       = 0;
+  timestamp_1sec_cnt      = 0;
+}
 
+void TimeStampClass::Update(void) {
   uint64_t timestamp_us = esp_timer_get_time();
-  ten_ms_tick = false;
-  second_tick = false;
+  ten_ms_tick             = false;
+  second_tick             = false;
+  four_seconds_tick       = false;
   if(timestamp_us - timestamp_us_prev >= TIMESTAMP_10MS_DIV) {
     timestamp_10ms++;
     timestamp_1sec_cnt++;
@@ -263,9 +341,12 @@ static void UpdateTimestamps(void) {
       timestamp_1sec++;
       timestamp_1sec_cnt = 0;
       second_tick = true;
+      four_seconds_tick = !(timestamp_1sec & 3);
     }
   }
 }
+
+TimeStampClass TimeStamps;
 
 //=====================================================================//
 //== Local: Read setup and track data from SD Card                   ==//
@@ -273,7 +354,7 @@ static void UpdateTimestamps(void) {
 
 static bool ReadSetupFromCard(bool get_init_data = true) {
   if(Settings.NV.SourceAF == SET_SOURCE_WAVE_GEN) return true; // Nothing to load for waveform player
-  if (!SD.begin(PIN_VSPI_SS, SPI)) {
+  if (!SD.begin(PIN_VSPI_SS, SPI, SPI_SD_SPEED)) {
     Serial.println("Card Mount Failed, using SSID & Radio lists from EEPROM");
     Settings.NoCard = 1;
     return false;
@@ -335,7 +416,8 @@ void SettingsLoopFunction(void) { Player.loop(); }
 
 static void GUI_Handler(uint8_t key) {
   if(key != 0xFF) Serial.printf("Button %d pressed: ", key);
-  switch(GuiCallback(key, timestamp_10ms)) {
+  switch(GuiCallback(key/*, TimeStamps.GetStamp10ms()*/)) {
+    case GUI_RESULT_NEW_TRACK      : Player.PlayNew();      break;
     case GUI_RESULT_NEXT_PLAY      : Player.PlayNext();     break;
     case GUI_RESULT_PREV_PLAY      : Player.PlayPrevious(); break;
     case GUI_RESULT_PAUSE_PLAY     : if(Settings.FirstTime) {
@@ -347,17 +429,22 @@ static void GUI_Handler(uint8_t key) {
                                      else
                                        Player.PauseResume();
                                      break;
-    //case GUI_RESULT_SEEK_PLAY    : Player.PositionEntry(); break;
+    case GUI_RESULT_SEEK_PLAY      : Player.PositionEntry(); break;
     //case GUI_RESULT_STOP_PLAY    : break;
     //case GUI_RESULT_START_PLAY   : break;
+    case GUI_RESULT_NEW_SSID       : Player.NewSsid(); break;
     case GUI_RESULT_NEW_AM_FREQ    : SetAmDivider();     Display.ShowFrequencies(); break;
     case GUI_RESULT_NEW_FM_FREQ    : SetFmGainAndFreq(); Display.ShowFrequencies(); break;
+    case GUI_RESULT_NEW_TV_CHANNEL : SetTvChannel();     Display.ShowFrequencies(); break;
     case GUI_RESULT_NEW_OUTPUT_SEL : SetOutputSel();     Display.ShowFrequencies(); break;
     case GUI_RESULT_NEW_AF_SOURCE  : change_player(Settings.NV.SourceAF, Settings.NewSourceAF); break;
     case GUI_RESULT_NEW_AM_TRIM    : SetAmModLevel(false); break;
     case GUI_RESULT_NEW_AM_DEPTH   : SetAmModLevel(true);  break;
     case GUI_RESULT_NEW_FM_MOD_TYPE:
     case GUI_RESULT_NEW_FM_PGA     : SetFmGainAndFreq(); break;
+    case GUI_RESULT_NEW_VID_IMAGE  : ESP32CompositeVideo.ShowImage(Settings.NV.VidImage); break;
+    case GUI_RESULT_NEW_WIFI_TX_LEVEL : SetWifiPower(Settings.NV.WifiTxIndex, true); break;
+    case GUI_RESULT_NEW_BT_TX_LEVEL   : /*SetBtPower(Settings.NV.BtTxIndex, true);*/ break;
     default: break;
   }
   if(key != 0xFF) Serial.println();
@@ -370,13 +457,31 @@ static void SW4_HandleClick(void) { GUI_Handler(KEY_OK);   }
 static void SW5_HandleClick(void) { GUI_Handler(KEY_MENU); }
 
 //=====================================================================//
+//== Local: Housekeeping, fix things that might go wrong in time     ==//
+//=====================================================================//
+
+static void Housekeeping(void) {
+  //Serial.print("Houskeeping: ");
+  // MC44BS373CA is very sensitive to power glitches, so rewrite registers init every four seconds
+  MC44BS373CA.Init(1, 0);
+  // ESP32CompositeVideo may start up too slow, check if present now
+  if(!Settings.VidPresent) {
+    ESP32CompositeVideo.Init(0);
+    Settings.VidPresent = ESP32CompositeVideo.ChipPresent();
+    if(Settings.VidPresent) {
+      Serial.println("(Re)discovered ESP32 Composite Video module. ");
+      if(Settings.NV.VidImage >= ESP32CompositeVideo.ImageCount())
+        Settings.NV.VidImage = 0;
+      ESP32CompositeVideo.ShowImage(Settings.NV.VidImage);
+    }
+  }
+  //Serial.println("Done.");
+}
+
+//=====================================================================//
 //== Main Set-up                                                     ==//
 //=====================================================================//
 //
-// It appears that switching to another player cannot be done dynamically.
-// Some parts of the player seems not to be cleaned up properly, so the new
-// player will not work, or is unstable. Therefore, the solution is to do a
-// soft restart to assure the player get a fresh end clean environment.
 // It appears that switching to another player cannot be done dynamically.
 // Some parts of the player seems not to be cleaned up properly, so the new
 // player will not work, or is unstable. Therefore, the solution is to do a
@@ -398,7 +503,7 @@ void setup(void) {
   SPI.setFrequency(1000000);
 
   // I2C
-  Wire.begin(PIN_SDA1, PIN_SCL1, I2C_HIGH_CLOCK_SPEED); // For OLED
+  Wire.begin(PIN_SDA1, PIN_SCL1, I2C_HIGH_CLOCK_SPEED); // For OLED pins
   Wire.setBufferSize(256 + 8);
   Wire1.begin(PIN_SDA2, PIN_SCL2, I2C_LOW_CLOCK_SPEED); // For EEPROM
   Wire1.setBufferSize(256 + 8);
@@ -420,13 +525,12 @@ void setup(void) {
   SW4.attachClick(SW4_HandleClick);
   SW5.attachClick(SW5_HandleClick);
 
-  //if (boot_keys >= 2) {
   if (Settings.BootKeys == 0x12) {
-    Settings.EepromErase();       // Use this when settings have got corrupted
+    Settings.EepromErase();        // Use this when settings have got corrupted
   }
-  Settings.EepromLoad();          // Get the primary settings form EEPROM
+  Settings.EepromLoad();           // Get the primary settings form EEPROM
   Display.Initialize(Settings.isSoftRestart());
-  if(Settings.isSoftRestart()) {   // A soft restart does not show the welcome screen, so it
+  if(Settings.isSoftRestart()) {   // A soft restart does not show the TimesStampClassme screen, so it
     Settings.clearSoftRestart();   // simulates an impression of a dynamically change of player.
     Settings.Play = 1;             // After a soft restart, we start playing immediately (Note: BT always starts immediately)
     if(Settings.NV.SourceAF == SET_SOURCE_WEB_RADIO) {
@@ -439,59 +543,96 @@ void setup(void) {
       ReadSetupFromCard(); // (Re)load the track list
   }
   else {
-    UpdateTimestamps();
-    uint32_t timestamp_now = timestamp_10ms;
+    TimeStamps.Update();
+    uint32_t timestamp_now = TimeStamps.GetStamp10ms();
     Display.ShowWelcome(); 
     if(Settings.NV.SourceAF == SET_SOURCE_WEB_RADIO) {
       SsidSettings.EepromLoad();
       UrlSettings.EepromLoad();
     }
     ReadSetupFromCard();
-    while(timestamp_10ms < timestamp_now + 300)  // Show welcome screen at least 3 seconds
-      UpdateTimestamps();
-    Settings.Play = Settings.NV.SourceAF == SET_SOURCE_BLUETOOTH; // Bluetooth is alwayf "autoplay"
+    while(TimeStamps.GetStamp10ms() < timestamp_now + 300)  // Show welcome screen at least 3 seconds
+      TimeStamps.Update();
+    Settings.Play = Settings.NV.SourceAF == SET_SOURCE_BLUETOOTH; // Bluetooth is always "autoplay"
   }
   Settings.SetLoopFunction(SettingsLoopFunction);
+  digitalWrite(PIN_FM_SW, HIGH);
+  delay(50);
+  Scan_I2C(Wire, 0);
+  Scan_I2C(Wire1, 1);
   CalculateAmModOffsets(); 
   SetOutputSel();
   SetAmModLevel();
   Settings.FmPresent = KT0803X.CheckPresent();
   if(Settings.FmPresent) {
-    if(Settings.NV.OutputSel != SET_OUTPUT_AM_ONLY) {
-      KT0803X.SetFreq(Settings.NV.FreqFM, false);
-      KT0803X.SetPga(Settings.NV.FmPga, false); 
-      KT0803X.SetMono(Settings.NV.FmModType, false);
+    KT0803X.SetFreq(Settings.NV.FreqFM,    false);
+    KT0803X.SetPga (Settings.NV.FmPga,     false); 
+    KT0803X.SetMono(Settings.NV.FmModType, false);
+    if(Settings.NV.OutputSel & SET_OUTPUT_FM_MASK) {
       if(!KT0803X.Start(0)) { // Error starting FM Tranmitter (KT0803L)
         Settings.FmPresent = 0;
-        Serial.println("Error starting FM Tranmitter (KT0803L), selecting AM only output");
-        Settings.NV.OutputSel = SET_OUTPUT_AM_ONLY;
+        Serial.println("Error starting FM Tranmitter (KT0803L), selecting AM output");
+        Settings.AdjustOutputSelect();
+        //Settings.NV.OutputSel = (Settings.NV.OutputSel & SET_OUTPUT_TV_MASK) | SET_OUTPUT_AM_MASK;
       }
     }
   }
   else {
-    Serial.println("FM Tranmitter (KT0803L) not found, selecting AM only output");
-    Settings.NV.OutputSel = SET_OUTPUT_AM_ONLY;
+    Serial.println("FM Tranmitter (KT0803L) not found, selecting AM output");
+    Settings.AdjustOutputSelect();
+    //Settings.NV.OutputSel = (Settings.NV.OutputSel & SET_OUTPUT_TV_MASK) | SET_OUTPUT_AM_MASK;
   }
-  //KT0803X.Init();
+  ESP32CompositeVideo.Init(1);
+  Settings.VidPresent = ESP32CompositeVideo.ChipPresent();
+  if(!Settings.VidPresent) {
+    MC44BS373CA.SetTestPattern(1, 0); // No video source present, use internal pattern generator
+  }
+  else {
+    if(Settings.NV.VidImage >= ESP32CompositeVideo.ImageCount())
+      Settings.NV.VidImage = 0;
+     ESP32CompositeVideo.ShowImage(Settings.NV.VidImage);
+    //Serial.println("ESP32CompositeVideo.ShowImage(Settings.NV.VidImage)");
+  }
+  MC44BS373CA.SetChannel(Settings.NV.TvChannel,0);
+  MC44BS373CA.Init(1);
+  MC44BS373CA.ShowInfo();
+  Settings.TvPresent = MC44BS373CA.ChipPresent();
+  Settings.AdjustOutputSelect();
+
+  // OMT
+  #if 0
+  for(int i = 0; i <40; i++) {
+  if(Scan_I2C_Device(Wire1, ESP32_COMP_VIDEO_ADDRESS)) {
+    Serial.printf("ESP32 Composite Video Generator found! at %02X\n",(int)ESP32_COMP_VIDEO_ADDRESS);
+    Wire1.beginTransmission(ESP32_COMP_VIDEO_ADDRESS);
+    Wire1.write("AT");
+    Wire1.write(0);
+    Wire1.endTransmission();
+    delay(50);
+    Wire1.requestFrom(ESP32_COMP_VIDEO_ADDRESS, 1); 
+    if(Wire1.available()) {
+      char c = Wire1.read(); 
+      Serial.printf("  %d (0x%02X) images found\n",c,c);   
+    }
+    else
+      Serial.println("  No ESP32 images found");
+  }
+  delay(50);
+  }
+  #endif
+  // /OMT
   Display.ShowBaseScreen(Settings.Play ? DISPLAY_HELP_PLEASE_WAIT : DISPLAY_HELP_PRESS_PLAY_TO_START);
   Serial.printf("Current player is \"%s\"\n", Settings.GetSourceName());
   Player.Start(Settings.Play);
 
   if(Settings.Play == 1 || Settings.NV.SourceAF == SET_SOURCE_BLUETOOTH) {
-    //Player.Play();
-    //Player.Start(true);
     Settings.FirstTime = 0;
   }
   else {
-    //Player.Start(false);
     Serial.println("Press \"Play\" to start");
     Display.ShowPlayPause(Settings.Play);
   }
   GuiInit();
-  // OMT: test
-  //for(int i = 0; i <= Settings.NV.VolumeSteps; i++)
-  //  Serial.printf("Volume test: %d of %d => %d of 63; %d => %d of 127\n", i, Settings.NV.VolumeSteps,Settings.GetLogVolume(i, 63), Settings.NV.VolumeSteps, Settings.GetLogVolume(i, 127)); 
-  // /OMT
 }
 
 //=====================================================================//
@@ -501,16 +642,19 @@ void setup(void) {
 void loop(void) {
   static unsigned run_time = 0;
 
-  UpdateTimestamps();
-  if(second_tick) {
+  TimeStamps.Update();
+  if(TimeStamps.GetSecondTick()) {
     Settings.EepromStore();
-    if(Settings.InitDAC) { // Some audio drivers destroys the DAC, so reint if necessary
+    if(Settings.InitDAC) { // Some audio drivers destroys the DAC, so reinit if necessary
       SetAmModLevel();
       Settings.InitDAC = 0;
     }
   }
-  Player.loop(ten_ms_tick, second_tick); // runs also audio.loop() if applicable
+  if(TimeStamps.Get4SecTick()) { 
+    Housekeeping();
+  }
 
+  Player.loop(TimeStamps.Get10msTick(), TimeStamps.GetSecondTick()); // runs also audio.loop() if applicable
   //Button logic
   SW1.tick();
   SW2.tick();

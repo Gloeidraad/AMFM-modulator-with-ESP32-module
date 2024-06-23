@@ -4,10 +4,10 @@
 #include <Arduino.h> // Only for Serial.prinf functions
 #include <math.h>
 #include "SimpleWaveGenerator.h"
-#include "src/board.h" // Comment out for stand alone version
+#include "src/Hardware/board.h" // Comment out for stand alone version
 
 #ifndef _BOARD_H_
- #error _BOARD_H_ not defined ()uncomment this line for stand alone version
+ #error _BOARD_H_ not defined (uncomment this line for stand alone version)
  #define PIN_I2S_BCK         26
  #define PIN_I2S_WS          25
  #define PIN_I2S_DOUT        27

@@ -1,99 +1,11 @@
 #ifndef _PLAYER_H_
 #define _PLAYER_H_
 
-#include <BluetoothA2DPSink.h>
-#include <Audio.h>
-#include "src/board.h"
+#include "src/AudioI2S/Audio.h"
+#include "src/BluetoothA2DP/BluetoothA2DPSink.h"
+#include "src/Hardware/board.h"
 #include "src/settings.h"
 #include "SimpleWaveGenerator.h"
-
-#if 1
-class PlayerBaseClass {
-  friend void bt_raw_stream_reader(const uint8_t*, uint32_t);
-  public:
-    PlayerBaseClass();
-    virtual ~PlayerBaseClass();
-    virtual void Start(bool autoplay = false) = 0;
-    virtual void Stop(void) = 0;
-    virtual void Play(void) = 0;
-    
-    virtual void PlayNext(void) = 0 ;
-    virtual void PlayPrevious(void) = 0;
-    virtual void loop(bool ten_ms_tick = false, bool seconds_tick = false) = 0;
-    virtual void PauseResume(void) = 0;
-    virtual void SetVolume(int vol) = 0;
-    virtual void PrintDebug(bool b = false) = 0;
-    
-    void AddLoopFunction(void (*f)(void)) { _loop = f; }
-  private:
-    void (*_loop)(void);
-};
-
-class MP3_PlayerClass : public PlayerBaseClass {
-  friend void bt_raw_stream_reader(const uint8_t*, uint32_t);
-  public:
-    MP3_PlayerClass();
-    ~MP3_PlayerClass();
-    void Start(bool autoplay = false);
-    void Stop(void);
-    void Play(void);
-    
-    void PlayNext(void);
-    void PlayPrevious(void);
-    void loop(bool ten_ms_tick = false, bool seconds_tick = false);
-    void PauseResume(void);
-  private:
-};
-
-class WR_PlayerClass : public PlayerBaseClass {
-  friend void bt_raw_stream_reader(const uint8_t*, uint32_t);
-  public:
-    WR_PlayerClass();
-    ~WR_PlayerClass();
-    void Start(bool autoplay = false);
-    void Stop(void);
-    void Play(void);
-    
-    void PlayNext(void);
-    void PlayPrevious(void);
-    void loop(bool ten_ms_tick = false, bool seconds_tick = false);
-    void PauseResume(void);
-  private:
-};
-
-class BT_PlayerClass : public PlayerBaseClass {
-  friend void bt_raw_stream_reader(const uint8_t*, uint32_t);
-  public:
-    BT_PlayerClass();
-    ~BT_PlayerClass();
-    void Start(bool autoplay = false);
-    void Stop(void);
-    void Play(void);
-    
-    void PlayNext(void);
-    void PlayPrevious(void);
-    void loop(bool ten_ms_tick = false, bool seconds_tick = false);
-    void PauseResume(void);
-  private:
-};
-
-class WF_PlayerClass : public PlayerBaseClass {
-  friend void bt_raw_stream_reader(const uint8_t*, uint32_t);
-  public:
-    WF_PlayerClass();
-    ~WF_PlayerClass();
-    void Start(bool autoplay = false);
-    void Stop(void);
-    void Play(void);
-    
-    void PlayNext(void);
-    void PlayPrevious(void);
-    void loop(bool ten_ms_tick = false, bool seconds_tick = false);
-    void PauseResume(void);
-  private:
-};
-
-#endif
 
 class PlayerClass {
   friend void bt_raw_stream_reader(const uint8_t*, uint32_t);
@@ -102,7 +14,7 @@ class PlayerClass {
     void Start(bool autoplay = false);
     void Stop(void);
     void Play(void);
-    
+    void PlayNew(void);
     void PlayNext(void);
     void PlayPrevious(void);
     void loop(bool ten_ms_tick = false, bool seconds_tick = false);
@@ -120,14 +32,15 @@ class PlayerClass {
     void CheckBluetoothVolume(int v); 
     void SD_PrintDebug(void);
     void WP_PrintDebug(bool hex = false) { if(_waveform_player != NULL) _waveform_player->Print(hex); }
-
+    Audio * GetAudioPlayer() { return _audio; }
     //void SetupPlayerDisplay(bool no_queue = false);
-    //void PositionEntry(void);
+    void PositionEntry(void);
+    void NewSsid(void);
     
   protected:
     //void StopPlayer(void);
     //void StartPlayer(void);
-    bool PlayTrackFromSD(int n, uint32_t resume_pos = 0, uint32_t resume_time = 0);
+    bool PlayTrackFromSD(int n, uint32_t resume_pos = 0, uint32_t resume_time = 0, uint32_t track_time = 0, uint32_t total_time = 0);
  
     void (*_loop)(void);
     Audio * _audio;

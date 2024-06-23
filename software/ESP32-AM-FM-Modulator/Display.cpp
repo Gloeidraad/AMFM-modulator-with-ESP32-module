@@ -2,7 +2,8 @@
 
 #include "Display.h"
 
-#include "src/NFOR_SSD1306.h"
+#include "src/Version.h"
+#include "src/Hardware/NFOR_SSD1306.h"
 #include "src/settings.h"
 #include "SimpleWaveGenerator.h"
 
@@ -122,7 +123,7 @@ void DisplayClass::SetTimeString(const char *s)  { strcpy(_time_string, s);  _ti
   D_STRING s_Welcome[] = { "  Welcome to",
                            "  ESP32 AM/FM",
                            "  Radio Station",
-                           "v.6.7"
+                           SOFTWARE_VERSION
                          }; 
 
 //******************************************************//
@@ -201,7 +202,7 @@ void DisplayClass::ShowBaseScreen(const char * help_line) {
   OLED.setline(TICKER_BOTTOM_LINE, 0x10);
   ShowLine(PLAYER_NAME_LINE, Settings.GetSourceName(), SSD1306_FONT_8X8);
   switch(Settings.NV.SourceAF) {
-    case SET_SOURCE_SD_CARD   :  ShowTrackNumber();    /*if(help_line == NULL) ShowHelpLine(s_PressPlayToStart);*/ break;
+    case SET_SOURCE_SD_CARD   :  ShowTrackNumber();    break;
     case SET_SOURCE_WEB_RADIO :  ShowWebRadioNumber(); break;
     case SET_SOURCE_WAVE_GEN  :  ShowWaveformId();     break;
     case SET_SOURCE_BLUETOOTH :  ShowBluetoothId();    break;
@@ -258,7 +259,12 @@ void DisplayClass::ShowBluetoothName(void) {
 
 void DisplayClass::ShowTrackNumber(void) {
   MakeTrackString(false);
-  SetTimeString("-:--/-:--");
+  if(Settings.CurrentTrackTime > 0) { // OMT: quick and dirty, needs rework
+    Settings.TotalTrackTime = Settings.NV.DiskTrackTotalTime;
+    MakeTimeString();
+  }
+  else
+    SetTimeString("-:--/-:--");
   ShowTrackNumberAndPlayTime(true);
 }
 
@@ -326,25 +332,46 @@ void DisplayClass::ShowStreamTitle(const char *s) {
   else {
     web_station_t web_station;
     UrlSettings.GetStation(Settings.NV.WebRadioCurrentStation, web_station);
-    Display.ShowTrackTitle(web_station.name);
+    Display.ShowTrackTitle(web_station.name); // OMT
     Serial.print(web_station.name);
   }
 }
 
 void DisplayClass::ShowFrequencies(void) {
-  char AmInfoString[22];
-  char FmInfoString[22];
-  if(Settings.NV.OutputSel != SET_OUTPUT_FM_ONLY) Settings.AmFreqToString(AmInfoString, "AM:");
-  if(Settings.NV.OutputSel != SET_OUTPUT_AM_ONLY) Settings.FmFreqToString(FmInfoString, "FM:");
-
+  char InfoString1[22];
+  char InfoString2[22];
+  InfoString1[0] = 0;
+  InfoString2[0] = 0;
   OLED.setline(STATUS_LINE1, 0); 
   OLED.setline(STATUS_LINE2, 0); 
-  if(Settings.NV.OutputSel == SET_OUTPUT_AM_FM) 
-    OLED.puts_xy(0, STATUS_LINE1, AmInfoString, SSD1306_FONT_5X8);
-  if(Settings.NV.OutputSel != SET_OUTPUT_AM_ONLY)  
-    OLED.puts_xy(0, STATUS_LINE2, FmInfoString, SSD1306_FONT_5X8);
-  else
-    OLED.puts_xy(0, STATUS_LINE2, AmInfoString, SSD1306_FONT_5X8);
+  switch(Settings.NV.OutputSel) {
+    case SET_OUTPUT_AM_ONLY: Settings.AmFreqToString(InfoString2, "AM:");
+                             break;
+    case SET_OUTPUT_FM_ONLY: Settings.FmFreqToString(InfoString2, "FM:");
+                             break;
+    case SET_OUTPUT_AM_FM:   Settings.AmFreqToString(InfoString1, "AM:");
+                             Settings.FmFreqToString(InfoString2, "FM:");
+                             break;
+    case SET_OUTPUT_TV_ONLY: Settings.TvFreqToString(InfoString2, "TV:");
+                             break;
+    case SET_OUTPUT_AM_TV:   Settings.AmFreqToString(InfoString1, "AM:");
+                             Settings.TvFreqToString(InfoString2, "TV:");
+                             break;
+    case SET_OUTPUT_FM_TV:   Settings.FmFreqToString(InfoString1, "FM:");
+                             Settings.TvFreqToString(InfoString2, "TV:");
+                             break;
+    case SET_OUTPUT_ALL:     Settings.AmFreqToString(InfoString1, "AM:");
+                             Settings.FmFreqToString(InfoString2, "FM:",0,true);
+                             break;
+    default:                 strcpy(InfoString2, "Output Sel. Error");
+                             break;
+  }
+  OLED.puts_xy(0, STATUS_LINE1, InfoString1, SSD1306_FONT_5X8);
+  OLED.puts_xy(0, STATUS_LINE2, InfoString2, SSD1306_FONT_5X8);
+  if(Settings.NV.OutputSel == SET_OUTPUT_ALL) {
+    Settings.TvChanToString(InfoString2,"TV:", 0, true);
+    OLED.puts_xy(SSD1306_Fonts[SSD1306_FONT_5X8].u8LineLength-strlen(InfoString2), STATUS_LINE2, InfoString2, SSD1306_FONT_5X8);
+  }
   OLED.shift_row_down(STATUS_LINE2);
 }
 

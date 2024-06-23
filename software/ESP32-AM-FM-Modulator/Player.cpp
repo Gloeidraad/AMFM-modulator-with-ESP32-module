@@ -1,10 +1,14 @@
 
 #include "src/ChipInfo.h"
-#include "Player.h"
+#include "esp_wifi.h"
 #include "Display.h"
 #include "SimpleWaveGenerator.h"
+#include "Player.h"
 
 #define BT_ACTIVITY_TIMER   10  // in 10 ms slots
+
+#define BLUETOOTH_VOLUME_MIN  24
+#define BLUETOOTH_VOLUME_MAX  127
 
 static void AudioDieOut(Audio * _audio, int loops = 100) {
   if(_audio == NULL) return;
@@ -45,25 +49,70 @@ void PlayerClass::SD_PrintDebug(void) {
   }
 }
 
-bool PlayerClass::PlayTrackFromSD(int n, uint32_t resume_pos, uint32_t resume_time) {
+bool PlayerClass::PlayTrackFromSD(int n, uint32_t resume_pos, uint32_t resume_time, uint32_t track_time, uint32_t total_time) {
   _audio->stopSong();
   if(n == 0 || n > Settings.NV.DiskTotalTracks) {
     Serial.printf("Illegal track number: 0 < n < %d\n", Settings.NV.DiskTotalTracks + 1);
     return false;
   }
   String track(TrackSettings.GetTrackName(n));
-  Serial.printf("Starting [%d]: \"%s\" at %d\n", n, track.c_str(), resume_pos);
+  Serial.printf("Starting [%d]: \"%s\" at %d (%ds)\n", n, track.c_str(), resume_pos, resume_time);
   Display.ShowTrackTitle(track.c_str());
-  //_audio->connecttoSD(track.c_str(), resume_pos);  // Appears to be no longer in the library
   _audio->connecttoFS(SD, track.c_str(), resume_pos);
+  // Fix positioning if resume_pos fails (run until AudioCurrentTime is valid, then reposition if necessary)
+  #if 1
+  if(resume_time > 15) {
+    uint32_t time  = millis();
+    uint32_t cur, len;
+    uint16_t ms100 = 0;
+    while(ms100 < AUDIO_HEADER_TIMEOUT/100) { 
+      _audio->loop();
+      if(millis() > time + 100) {
+        cur = _audio->getAudioCurrentTime();
+        if(cur > 0) {
+          len = _audio->getAudioFileDuration();
+          Serial.printf("Resume found = %d/%d after %d00 ms\n", cur, len, ms100);
+          break;
+        }
+        ms100++;
+        time += 100;
+      }
+    }
+    #if 0
+    if(cur < resume_time - 15) { // 15 seconds off is accpetable
+      while(millis() > time + 1000) // Run for another second
+        _audio->loop();
+      Serial.printf("Reposition %d to %d\n", cur, resume_time);
+      _audio->setAudioPlayPosition(resume_time);
+    }
+    #endif
+  }
+  // end fix
+  #endif
   Settings.AudioEnded             = 0;
   Settings.NV.DiskCurrentTrack    = n;
   Settings.NV.DiskTrackResumePos  = resume_pos;
   Settings.NV.DiskTrackResumeTime = resume_time;
-  Settings.CurrentTrackTimeOffset = resume_time;
   Settings.CurrentTrackTime       = resume_time; 
-  Settings.TotalTrackTime         = 0;   // Will become available later, see loop()
+  Settings.TotalTrackTime         = track_time;  // Reset: Will be adjusted later, see loop()
   return true;
+}
+
+void PlayerClass::PositionEntry(void) {
+  if(Settings.CurrentTrackTime == Settings.SeekTrackTime) {
+    Serial.println("SD time not changed");
+  }
+  else {
+    Serial.printf("SD time changed from %d to %d\n", Settings.CurrentTrackTime, Settings.SeekTrackTime);
+    Settings.CurrentTrackTime = Settings.SeekTrackTime;
+    _audio->setAudioPlayPosition(Settings.SeekTrackTime);
+    Settings.NV.DiskTrackResumeTime = Settings.SeekTrackTime;
+    //Settings.NV.DiskTrackResumePos  = _audio->getFilePos() - _audio->inBufferFilled();
+    Display.ShowPlayTime(true); //OMT: new
+  }
+  
+  if(Settings.Play)
+    _audio->pauseResume(); // continue playing
 }
 
 //******************************************************//
@@ -119,6 +168,15 @@ static void bt_on_data_received(void) {
   }*/
 }
 
+void PlayerClass::NewSsid(void) {
+  if(_audio != NULL && Settings.NV.SourceAF == SET_SOURCE_WEB_RADIO) {
+    Stop();
+    if(WiFi.status() == WL_CONNECTED)
+      WiFi.disconnect();
+    Start();
+  }
+}
+
 void PlayerClass::Stop(void) { // Stop() must be followed by a reboot (or in the future perhaps Start())
   Serial.printf("Stopping player \"%s\"\n", Settings.GetSourceName(Settings.NV.SourceAF));
   if(_audio != NULL) { _audio->stopSong(); AudioDieOut(_audio); delete _audio; _audio = NULL; }
@@ -134,7 +192,7 @@ void PlayerClass::Start(bool autoplay) {
                                    TrackSettings.LoadFromCard(true); // If previous session had no card, or after a soft restart.
                                  }
                                  else {
-                                   if (!SD.begin(PIN_VSPI_SS, SPI)) {
+                                   if (!SD.begin(PIN_VSPI_SS, SPI, SPI_SD_SPEED)) {
                                      Serial.println("Card Mount Failed, Cannot play track");
                                      Display.ShowHelpLine(DISPLAY_HELP_NO_CARD, true);
                                      Settings.NoCard = 1;
@@ -155,6 +213,7 @@ void PlayerClass::Start(bool autoplay) {
                                  }
                                  _audio = new Audio;
                                  _audio->setPinout(PIN_I2S_BCK, PIN_I2S_WS, PIN_I2S_DOUT);
+                                 _audio->setHeaderTimeout(10000);  // Using OMT expansion
                                  #if DAC_ID == DAC_ID_PT8211
                                    _audio->setI2SCommFMT_LSB(true);
                                    _audio->setVolume(SET_VOLUME_MAX);
@@ -200,6 +259,7 @@ void PlayerClass::Start(bool autoplay) {
                                    //_a2dp_sink->set_on_data_received(bt_on_data_received);
                                    _a2dp_sink->start((const char *)Settings.NV.BtName, true);
                                    _a2dp_sink->reconnect(); // OMT new
+                                   //_a2dp_sink->set_volume(BLUETOOTH_VOLUME_MAX);
                                    Display.ShowHelpLine((const char *)Settings.NV.BtName);
                                  }
                                  _activity_counter = 0;
@@ -209,6 +269,7 @@ void PlayerClass::Start(bool autoplay) {
                                  Display.ShowHelpLine(DISPLAY_HELP_INITIALIZING_WEBRADIO, true);
                                  Serial.printf("Connecting to %s ", SsidSettings.GetSsid(Settings.NV.CurrentSsid), false);
                                  WiFi.begin(SsidSettings.GetSsid(Settings.NV.CurrentSsid), SsidSettings.GetPassword(Settings.NV.CurrentSsid));
+                                 WiFi.setTxPower((wifi_power_t)Settings.GetWifiTxLevel());
                                  while (WiFi.status() != WL_CONNECTED  && timeout > 0) {
                                    if( esp_timer_get_time() >= timestamp_us + 500000) {
                                       timestamp_us = esp_timer_get_time();
@@ -262,7 +323,9 @@ void PlayerClass::Play(void) {
                                    break;
                                  else {
                                    if(Settings.FirstSong) {
-                                     PlayTrackFromSD(Settings.NV.DiskCurrentTrack, Settings.NV.DiskTrackResumePos, Settings.NV.DiskTrackResumeTime);
+                                     Serial.printf("OMT: DiskTrackResumePos %d, DiskTrackResumeTime %d\n", Settings.NV.DiskTrackResumePos, Settings.NV.DiskTrackResumeTime); 
+                                     PlayTrackFromSD(Settings.NV.DiskCurrentTrack, Settings.NV.DiskTrackResumePos, Settings.NV.DiskTrackResumeTime, Settings.NV.DiskTrackTotalTime);
+                                     Serial.printf("OMT: Current time %d\n", Settings.CurrentTrackTime); 
                                      Settings.FirstSong = 0;
                                    }
                                    else
@@ -274,7 +337,6 @@ void PlayerClass::Play(void) {
                                  Display.ShowTrackNumber();
                                  break;
     case SET_SOURCE_BLUETOOTH  : Settings.CurrentTrackTime = 0;
-                                 //Display.ShowBluetoothId();
                                  Display.ShowBluetoothName();
                                  Settings.Play = 0; // omt
                                  Display.ShowPlayPause(0);
@@ -294,6 +356,7 @@ void PlayerClass::Play(void) {
                                  Display.ShowWebRadioNumber();
                                  Display.ShowPlayPause(Settings.Play);
                                  Serial.println("**********new radio started************");
+                                 Settings.WebTitleReceived = 0;
                                  break;
     case SET_SOURCE_WAVE_GEN   : _waveform_player->Volume(SET_VOLUME_DEFAULT,false); 
                                  _waveform_player->Start(Settings.NV.WaveformId);
@@ -311,9 +374,9 @@ void PlayerClass::Play(void) {
 }
 
 IRAM_ATTR void PlayerClass::loop(bool ten_ms_tick, bool seconds_tick) {
-  if(_audio != NULL)  _audio->loop();
+  if(_audio != NULL) _audio->loop();
   switch(Settings.NV.SourceAF) {
-    case SET_SOURCE_SD_CARD   :{  uint32_t t = _audio->getAudioCurrentTime() + Settings.CurrentTrackTimeOffset;
+    case SET_SOURCE_SD_CARD   :{  uint32_t t = _audio->getAudioCurrentTime(); // OMT + Settings.CurrentTrackTimeOffset;
                                   if(Settings.CurrentTrackTime != t) {
                                     if(t)
                                       Settings.CurrentTrackTime = t;
@@ -364,13 +427,13 @@ IRAM_ATTR void PlayerClass::loop(bool ten_ms_tick, bool seconds_tick) {
     case SET_SOURCE_WEB_RADIO  : if(seconds_tick && _audio->isRunning()) {
                                    Settings.UpdateCurrentTrackTime();
                                    Display.ShowPlayTime();
-                                   if(Settings.CurrentTrackTime == 2) { // Show the station name from list. 
+                                   if(!Settings.WebTitleReceived && Settings.CurrentTrackTime == 2) { // Show the station name from list. 
                                      web_station_t web_station;
                                      UrlSettings.GetStation(Settings.NV.WebRadioCurrentStation, web_station);
                                      Display.ShowStationName(web_station.name);
                                    }
                                  }
-                                 if(Settings.AudioEnded)
+                                 if(Settings.AudioEnded) 
                                    PlayNext();
                                  break;
     case SET_SOURCE_WAVE_GEN   : _waveform_player->loop();
@@ -381,7 +444,15 @@ IRAM_ATTR void PlayerClass::loop(bool ten_ms_tick, bool seconds_tick) {
                                  break;
     default:                     break;
   }
-  Display.loop(ten_ms_tick);
+  Display.loop(ten_ms_tick); 
+}
+
+void PlayerClass::PlayNew(void) {
+  switch(Settings.NV.SourceAF) {
+    case SET_SOURCE_SD_CARD    : Settings.NV.DiskCurrentTrack = Settings.NewTrack; Play(); break;
+    case SET_SOURCE_WEB_RADIO  : Settings.NV.WebRadioCurrentStation = Settings.NewTrack; Play(); break;
+    default: break;
+  }  
 }
 
 void PlayerClass::PlayNext(void) {
@@ -400,7 +471,27 @@ void PlayerClass::PlayNext(void) {
 
 void PlayerClass::PlayPrevious(void) {
   switch(Settings.NV.SourceAF) {
-    case SET_SOURCE_SD_CARD    : Settings.PrevDiskTrack();    Play(); break;
+    case SET_SOURCE_SD_CARD    : if(_audio->getAudioCurrentTime() >= 5) {
+                                   //_audio->setTimeOffset(0);
+                                   //Play();
+                                   if(_audio->isRunning()) {
+                                     _audio->pauseResume();
+                                     Settings.CurrentTrackTime = 0;
+                                     _audio->setAudioPlayPosition(0);
+                                     Display.ShowPlayTime(true);
+                                     _audio->pauseResume();
+                                   }
+                                   else {
+                                     Settings.CurrentTrackTime = 0;
+                                     _audio->setAudioPlayPosition(0);
+                                     Display.ShowPlayTime(true);
+                                   }
+                                 }
+                                 else {
+                                   Settings.PrevDiskTrack();
+                                   Play();
+                                 }
+                                 break;
     case SET_SOURCE_WEB_RADIO  : Settings.PrevRadioStation(); Play(); break;
     case SET_SOURCE_BLUETOOTH  : if(Settings.CurrentTrackTime >= 5) 
                                    _a2dp_sink->rewind();
@@ -415,6 +506,32 @@ void PlayerClass::PlayPrevious(void) {
   }
 }
 
+static void PrintSdDebug(Audio * _audio) {
+  uint32_t t1,t2,t3;
+  Serial.println("******************** Begin of SD pause debug"); 
+  Serial.printf("getAudioDataStartPos: %d\n", _audio->getAudioDataStartPos()); 
+  Serial.printf("getFileSize         : %d\n", _audio->getFileSize()); 
+  Serial.printf("getFilePos          : %d\n", _audio->getFilePos()); 
+  Serial.printf("getSampleRate       : %d\n", _audio->getSampleRate()); 
+  Serial.printf("getBitsPerSample    : %d\n", _audio->getBitsPerSample()); 
+  Serial.printf("getChannels         : %d\n", _audio->getChannels()); 
+  Serial.printf("getBitRate          : %d\n", _audio->getBitRate()); 
+  Serial.printf("getAudioFileDuration: %d\n", _audio->getAudioFileDuration()); 
+  Serial.printf("getAudioCurrentTime : %d\n", _audio->getAudioCurrentTime()); 
+  //Serial.printf("getTotalPlayingTime : %d\n", _audio->getTotalPlayingTime()); 
+  //Serial.printf("getVUlevel          : %d\n", _audio->getVUlevel()); 
+  Serial.printf("inBufferFilled      : %d\n", _audio->inBufferFilled()); 
+  Serial.printf("inBufferFree        : %d\n", _audio->inBufferFree()); 
+  //    Serial.printf("inBufferSize        : %d\n", _audio->inBufferSize()); 
+
+  t1 = _audio->getFileSize() - _audio->getAudioDataStartPos();
+  t2 = t1 * _audio->getAudioCurrentTime() / _audio->getAudioFileDuration();
+  Serial.printf("OMT: Audio size     : %d\n", t1);
+  Serial.printf("OMT: New file pos   : %d\n", t2);
+   
+  Serial.println("******************** End of SD pause debug"); 
+}
+
 void PlayerClass::PauseResume(void) {
   switch(Settings.NV.SourceAF) {
     case SET_SOURCE_SD_CARD    : Settings.Play = !_audio->isRunning();
@@ -422,11 +539,14 @@ void PlayerClass::PauseResume(void) {
                                  _audio->pauseResume();
                                  Display.ShowPlayPause(Settings.Play);
                                  if(!Settings.Play) {
-                                   if(!Settings.NoCard && Settings.NV.DiskTotalTracks > 0) {
+                                   if(!Settings.NoCard && Settings.NV.DiskTotalTracks > 0) { 
                                      Serial.println("Save card track position");
-                                     Settings.NV.DiskTrackResumeTime = _audio->getAudioCurrentTime() + Settings.CurrentTrackTimeOffset;
-                                     Settings.NV.DiskTrackResumePos  = _audio->getFilePos();
-                                     Settings.NV.DiskTrackTotalTime  = Settings.TotalTrackTime;
+                                     Settings.NV.DiskTrackResumeTime = _audio->getAudioCurrentTime();
+                                     Settings.NV.DiskTrackResumePos  = _audio->getFilePos() - _audio->inBufferFilled();
+                                     Settings.NV.DiskTrackTotalTime  = _audio->getAudioFileDuration();
+                                     //Settings.NV.DiskTrackResumePos  = _audio->getAudioDataStartPos() + (_audio->getFileSize() - _audio->getAudioDataStartPos()) * Settings.NV.DiskTrackResumeTime / Settings.NV.DiskTrackTotalTime;
+                                     Serial.printf("Saving pos: %d s, len: %d s\n", Settings.NV.DiskTrackResumeTime, Settings.NV.DiskTrackTotalTime); 
+                                     PrintSdDebug(_audio);
                                      Settings.EepromStore();
                                    }
                                  }
@@ -459,14 +579,16 @@ void PlayerClass::PauseResume(void) {
   }
 }
 
-#define BLUETOOTH_VOLUME_MIN  24
-
 void PlayerClass::CheckBluetoothVolume(int v) {
   if(_a2dp_sink != NULL)  { 
-    if(v < BLUETOOTH_VOLUME_MIN) { // a minimum volume is needed to run properly
-      _a2dp_sink->set_volume(BLUETOOTH_VOLUME_MIN);
-      Serial.println("Bluetooth zero or low volume detected");
-    }
+    #if 0
+      _a2dp_sink->set_volume(BLUETOOTH_VOLUME_MAX);
+    #else
+      if(v < BLUETOOTH_VOLUME_MIN) { // a minimum volume is needed to run properly
+        _a2dp_sink->set_volume(BLUETOOTH_VOLUME_MIN);
+        Serial.println("Bluetooth zero or low volume detected");
+      }
+    #endif
   }
 }
 
@@ -477,7 +599,7 @@ void PlayerClass::CheckBluetoothVolume(int v) {
 // optional (weak function override)
 
 void audio_showstation(const char *info)     { Display.ShowStation(info);     }
-void audio_showstreamtitle(const char *info) { Display.ShowStreamTitle(info); }
+void audio_showstreamtitle(const char *info) { Settings.WebTitleReceived = 1; Display.ShowStreamTitle(info); }
 void audio_lasthost(const char *info)        { Display.ShowLastHost(info);    }
 void audio_eof_mp3(const char *info)         { Display.ShowTrackEnded(info);  Settings.AudioEnded = 1; }
 void audio_eof_stream(const char* info)      { Display.ShowStreamEnded(info); Settings.AudioEnded = 1; }
