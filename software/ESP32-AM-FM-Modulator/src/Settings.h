@@ -57,20 +57,27 @@
 #define SET_SOURCE_BLUETOOTH      3
 #define SET_SOURCE_DEFAULT        SET_SOURCE_SD_CARD
 
-
 #define SET_WAVE_FORM_MIN         0
-#define SET_WAVE_FORM_MAX         6   //3
+#define SET_WAVE_FORM_MAX         4 //3: only waveforms, 4: plus DAC test, 6: plus DAC debug
 #define SET_WAVE_SINE_440HZ       0
 #define SET_WAVE_SINE_1KHZ        1
 #define SET_WAVE_TRI_440HZ        2
 #define SET_WAVE_TRI_1KHZ         3
 #define SET_WAVE_DEFAULT          SET_WAVE_SINE_440HZ
 
-#define SET_OUTPUT_MAX            2 // With FM chip mounted
-#define SET_OUTPUT_AM_ONLY        0
-#define SET_OUTPUT_FM_ONLY        1
-#define SET_OUTPUT_AM_FM          2
-#define SET_OUTPUT_DEFAULT        SET_OUTPUT_AM_ONLY
+#define SET_OUTPUT_MIN            1 // AM only
+#define SET_OUTPUT_MAX            5 // With FM and TV chips mounted
+#define SET_OUTPUT_AM_ONLY        1
+#define SET_OUTPUT_FM_ONLY        2
+#define SET_OUTPUT_AM_FM          3
+#define SET_OUTPUT_TV_ONLY        4
+#define SET_OUTPUT_AM_TV          5
+#define SET_OUTPUT_FM_TV          6  // not used: FM & TV interfere
+#define SET_OUTPUT_ALL            7  // not used: FM & TV interfere
+#define SET_OUTPUT_DEFAULT        SET_OUTPUT_ALL
+#define SET_OUTPUT_AM_MASK        0x1  // bit0
+#define SET_OUTPUT_FM_MASK        0x2  // bit1
+#define SET_OUTPUT_TV_MASK        0x4  // bit2
 
 #define SET_AMGRID_MAX            2
 #define SET_AMGRID_EUR            0
@@ -113,7 +120,30 @@
 #define SET_FM_FREQ_STEP            1
 #define SET_FM_FREQ_DEFAULT       999  // 99.9 MHz
 
+#define SET_TV_CHAN_MIN             2
+#define SET_TV_CHAN_MAX            69
+#define SET_TV_CHAN_DEFAULT         6
+
+#define SET_VHF_CHAN_MIN            2
+#define SET_VHF_CHAN_MAX           12
+#define SET_VHFI_CHAN_MAX           4
+#define SET_VHFII_CHAN_MIN          5
+#define SET_VHFI_FREQ_MIN        4825  // in kHz * 10
+#define SET_VHFII_FREQ_MIN      17525  // in kHz * 10
+#define SET_VHF_FREQ_STEP         700  // in kHz * 10
+
+#define SET_UHF_CHAN_MIN           21
+#define SET_UHF_CHAN_MAX           69
+#define SET_UHF_FREQ_MIN        47125  // in kHz * 10
+#define SET_UHF_FREQ_STEP         800  // in kHz * 10
+
 #define SET_SSID_MAX               3  //max 4 networks
+
+#define SET_WIFI_TX_MAX            9  // max wifi tx level (index)
+#define SET_WIFI_TX_DEFAULT        0  // Points to highest level
+
+#define SET_BT_TX_MAX              7  // max bluetooth tx level (index)
+#define SET_BT_TX_DEFAULT          5  // +3dbm 
 
 #define SET_WEBRADIO_MAX         199  // By far enough
 //#define SET_SD_TRACKS_MAX        299 // should be by far enough
@@ -132,20 +162,25 @@
 
 typedef struct {
 #pragma pack(1) // place at 8 bit boundaries
-  uint8_t  SourceAF;       // 0 = SD-Card, 1 = web radio, 2 = Tone generator, 3 = Bluetooth audio
-  uint8_t  OutputSel;      // 0 = AM; 1 = FM; 2 = AM + FM;
-  uint16_t FreqAM;         // In kHz
-  uint16_t FreqFM;         // In steps of 100 kHz (875 - 1080)
-  uint8_t  GridAM;         // 0 = Eur:531-1602@9kHz, 1 = Aus:531-1701@9kHz, 2 = USA:530-1700@10kHz
-  uint8_t  AmModLevel;     // 0 = full (max 100%), 1 = half (max 50%)
-  uint8_t  AmTrim;         // AM modulation trimming for 100% depth
-  uint8_t  FmModType;      // 0 = stereo, 1 = mono
-  uint8_t  FmPga;          // KT0803L audio gain
-  uint8_t  Reserved1;
-  uint8_t  CurrentSsid;    // 0,1,2,3:  We can connect to up to four wifi access points
-  uint8_t  TotalSsid;      // Valid number of SSISs
-  uint8_t  MagicKey;       // When set to SET_SOFT_RESET value, the ESP32 wil perform a restart.
-  uint8_t  WaveformId;     // See "SimpleWaveGenerator.h" for the list of wave forms
+  uint16_t Version;         // 
+  uint8_t  SourceAF;        // 0 = SD-Card, 1 = web radio, 2 = Tone generator, 3 = Bluetooth audio
+  uint8_t  OutputSel;       // bit0 = AM; bit1 = FM; bit2 = TV
+  uint16_t FreqAM;          // In kHz
+  uint16_t FreqFM;          // In steps of 100 kHz (875 - 1080)
+  uint8_t  GridAM;          // 0 = Eur:531-1602@9kHz, 1 = Aus:531-1701@9kHz, 2 = USA:530-1700@10kHz
+  uint8_t  AmModLevel;      // 0 = full (max 100%), 1 = half (max 50%)
+  uint8_t  AmTrim;          // AM modulation trimming for 100% depth
+  uint8_t  FmModType;       // 0 = stereo, 1 = mono
+  uint8_t  FmPga;           // KT0803L audio gain
+  uint8_t  TvChannel;       // Channel for MC44BS373CA television modulator
+  uint8_t  CurrentSsid;     // 0,1,2,3:  We can connect to up to four wifi access points
+  uint8_t  TotalSsid;       // Valid number of SSISs
+  uint8_t  MagicKey;        // When set to SET_SOFT_RESET value, the ESP32 wil perform a restart.
+  uint8_t  WaveformId;      // See "SimpleWaveGenerator.h" for the list of wave forms
+  uint8_t  VidImage;        // Image number on optimal video module
+  uint8_t  WifiTxIndex;     // Index in wifi tabel with TX levels
+  uint8_t  BtTxIndex;       // Index in bluetooth tabel with TX levels
+  uint8_t  Reserverd;
   uint16_t DiskTotalTracks;
   uint16_t DiskCurrentTrack;
   uint32_t DiskTrackResumeTime;
@@ -169,14 +204,15 @@ class SettingsClass {
     //friend class TrackSettingsClass;
 
     SettingsClass(TwoWire &wire = Wire, uint32_t current_speed = 400000);
-
     uint8_t      GetCurrentSourceId(void) { return NV.SourceAF; }
     const char * GetSourceName(void);
     const char * GetSourceName(uint8_t n);
     void AmFreqToString(char * s, int freq = 0) { AmFreqToString(s, "", freq); }
     void FmFreqToString(char * s, int freq = 0) { FmFreqToString(s, "", freq); }
     void AmFreqToString(char * s, const char * prefix, int freq = 0);
-    void FmFreqToString(char * s, const char * prefix, int freq = 0);
+    void FmFreqToString(char * s, const char * prefix, int freq = 0, bool no_chan = false);
+    void TvFreqToString(char * s, const char * prefix, int chan = 0);
+    void TvChanToString(char * s, const char * prefix, int chan = 0, bool no_freq = false);
 
     void SetLoopFunction(void (*f)(void)) { _loop = f; }
     void EepromLoad(void);
@@ -202,19 +238,21 @@ class SettingsClass {
 
     void NextWaveform(void);
     void PrevWaveform(void);
+    void AdjustOutputSelect(int adj = 0); // Valid values are -1, 0, or 1
 
     void UpdateCurrentTrackTime(int adj = 1);
     
     uint8_t GetLogVolume(uint8_t range) { return GetLogVolume(NV.Volume, range); }
     uint8_t GetLogVolume(uint8_t v, uint8_t range);
 
-    //NvSettings_t & NV() { return NV; }
+    uint8_t GetWifiTxLevel(int index = -1);
+    int8_t  GetBtTxLevel(int index = -1);
+    const char * GetWifiTxLevelDB(int index = -1);
 
     // non-volatiles start here
     NvSettings_t NV;
     // volatiles start here
     uint32_t CurrentTrackTime;
-    uint32_t CurrentTrackTimeOffset;
     uint32_t TotalTrackTime;
     uint32_t SeekTrackTime;
     uint8_t  BootKeys;
@@ -225,14 +263,14 @@ class SettingsClass {
     uint8_t  FirstTime;
     uint8_t  FirstSong;
     uint8_t  FmPresent;
-    //uint8_t  FmUpdate;
-    //uint8_t  FmReinit;
+    uint8_t  TvPresent;
+    uint8_t  VidPresent;
     uint16_t AmOffset50;
     uint16_t AmOffset100;
-     //uint8_t  WifiConnected;
-    //uint8_t  BtConnected;
     uint8_t  NewSourceAF;
+    uint8_t  NewTrack;
     uint8_t  InitDAC;
+    uint8_t  WebTitleReceived;
 
   protected:
 

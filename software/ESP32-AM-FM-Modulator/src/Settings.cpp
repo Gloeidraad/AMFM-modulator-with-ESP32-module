@@ -1,7 +1,10 @@
 #include <arduino.h>
 #include <Wire.h>
+#include <WiFi.h>
+#include <stdlib.h>
 #include "Settings.h"
-#include "board.h"
+#include "Version.h"
+#include "Hardware/board.h"
 
 #define NvData        ((unsigned char *)&NV)
 #define NvMirrorData  ((unsigned char *)&NvMirror)
@@ -13,6 +16,20 @@
 
 const char * const s_not_printable = "[Not Printable]";
 const char * const s_none          = "[None]";
+
+const uint8_t wifi_power_table[SET_WIFI_TX_MAX + 1] = {
+  WIFI_POWER_19_5dBm,       // 78
+  72, //WIFI_POWER_19dBm,   // 76 actual WIFI_POWER_18dBm = 72
+  66, //WIFI_POWER_18_5dBm, // 74 actual WIFI_POWER_16_5dBm = 66
+  //WIFI_POWER_17dBm,       // 68
+  WIFI_POWER_15dBm,         // 60
+  WIFI_POWER_13dBm,         // 52
+  WIFI_POWER_11dBm,         // 44
+  WIFI_POWER_8_5dBm,        // 34
+  WIFI_POWER_7dBm,          // 28
+  WIFI_POWER_5dBm,          // 20
+  WIFI_POWER_2dBm,          // 8
+};
 
 //=======================================================
 // Helper functions
@@ -64,8 +81,6 @@ inline static int Validate(int val, int min, int max) {
 TwoWire & EEPROM_I2C_PORT(void) { return *Settings._wire; }
 
 #define WIRE EEPROM_I2C_PORT()
-
-//#define WIRE (*Settings.GetWire())
 
 static void Read24Cxx(int addr, uint8_t * dat, int len) {
 #if EEPROM_I2C_ADDRESS_SIZE == 2 // Only for 24C32 and larger
@@ -197,6 +212,32 @@ const char * SettingsClass::GetSourceName(uint8_t n) {
   return player_name[n];
 }
 
+uint8_t SettingsClass::GetWifiTxLevel(int index) {
+  if(index < 0)
+    index = NV.WifiTxIndex;
+  return index <= SET_WIFI_TX_MAX ? wifi_power_table[NV.WifiTxIndex] : 0;
+}
+
+const char * SettingsClass::GetWifiTxLevelDB(int index) {
+  static char tx_in_db[6];
+  if(index < 0)
+    index = NV.WifiTxIndex;
+  if(index > SET_WIFI_TX_MAX) {
+    return "[ERR]";
+  }
+  index = wifi_power_table[index];
+  itoa(index >> 2, tx_in_db, 10);
+  if(index & 2)
+    strcat(tx_in_db, ".5");
+  return tx_in_db;
+}
+
+int8_t SettingsClass::GetBtTxLevel(int index) {
+  if(index < 0)
+    index = NV.BtTxIndex;
+  return index <= SET_BT_TX_MAX ? 3 * (index - 4) : 9;
+}
+
 const char * SettingsClass::GetSourceName(void) { return GetSourceName(NV.SourceAF); }
 
 void SettingsClass::AmFreqToString(char * s, const char * prefix, int freq) { //max size "1602kHz(187m)" => 13
@@ -207,14 +248,48 @@ void SettingsClass::AmFreqToString(char * s, const char * prefix, int freq) { //
   sprintf(s, "%s%dkHz(%dm)", prefix, freq, wave);
 }
 
-void SettingsClass::FmFreqToString(char * s, const char * prefix, int freq) { //max size "100.0MHz(C43+)" => 14
+void SettingsClass::FmFreqToString(char * s, const char * prefix, int freq, bool no_chan) { //max size "100.0MHz(C43+)" => 14
   const char *sub = "";
   if(freq == 0) freq = NV.FreqFM;
   int chan    = (freq - 870) / 3;
   int subchan = (freq - 870) % 3;  
   if(subchan == 1) sub = "+";
   if(subchan == 2) sub = "-", chan++;
-  sprintf(s, "%s%d.%dMHz(C%d%s)", prefix, freq/10, freq%10, chan, sub);
+  if(no_chan)
+    sprintf(s, "%s%d.%dMHz", prefix, freq/10, freq%10);
+  else
+    sprintf(s, "%s%d.%dMHz(C%d%s)", prefix, freq/10, freq%10, chan, sub);
+}
+
+void SettingsClass::TvFreqToString(char * s, const char * prefix, int chan) { //max size "471.25MHz(C12)" => 14
+  strcpy(s,prefix);
+  strcat(s,"1234567890");
+  if(chan == 0) chan = NV.TvChannel;
+  int freq;
+  if(chan < SET_VHFII_CHAN_MIN)
+    freq = SET_VHFI_FREQ_MIN + (chan - SET_VHF_CHAN_MIN) * SET_VHF_FREQ_STEP;
+  else if(chan < SET_UHF_CHAN_MIN)
+    freq = SET_VHFII_FREQ_MIN + (chan - SET_VHFII_CHAN_MIN) * SET_VHF_FREQ_STEP;
+  else
+    freq = SET_UHF_FREQ_MIN + (chan - SET_UHF_CHAN_MIN) * SET_UHF_FREQ_STEP;
+  sprintf(s, "%s%d.%dMHz(C%d)", prefix, freq/100, freq%100, chan);
+}
+
+void SettingsClass::TvChanToString(char * s, const char * prefix, int chan, bool no_freq) {
+  if(chan == 0) chan = NV.TvChannel;
+  if(no_freq) {
+    sprintf(s, "%sC%d",prefix,chan, true);
+  }
+  else {
+    int freq;
+    if(chan < SET_VHFII_CHAN_MIN)
+      freq = SET_VHFI_FREQ_MIN + (chan - SET_VHF_CHAN_MIN) * SET_VHF_FREQ_STEP;
+    else if(chan < SET_UHF_CHAN_MIN)
+      freq = SET_VHFII_FREQ_MIN + (chan - SET_VHFII_CHAN_MIN) * SET_VHF_FREQ_STEP;
+    else
+      freq = SET_UHF_FREQ_MIN + (chan - SET_UHF_CHAN_MIN) * SET_UHF_FREQ_STEP;
+    sprintf(s, "%sC%d %d.%dMHz", prefix, chan, freq/100, freq%100);
+  }
 }
 
 void SettingsClass::doSoftRestart(void) {
@@ -222,32 +297,6 @@ void SettingsClass::doSoftRestart(void) {
   EepromStore();
   esp_restart();
 }
-#if 0
-  uint8_t  SourceAF;       // 0 = SD-Card, 1 = web radio, 2 = Tone generator, 3 = Bluetooth audio
-  uint8_t  OutputSel;      // 0 = AM; 1 = FM; 2 = AM + FM;
-  uint16_t FreqAM;         // In kHz
-  uint16_t FreqFM;         // In steps of 100 kHz (875 - 1080)
-  uint8_t  GridAM;         // 0 = Eur:531-1602@9kHz, 1 = Aus:531-1701@9kHz, 2 = USA:530-1700@10kHz
-  uint8_t  AmModLevel;     // 0 = full (max 100%), 1 = half (max 50%)
-  uint8_t  AmTrim;         // AM modulation trimming for 100% depth
-  uint8_t  FmModType;      // 0 = stereo, 1 = mono
-uint8_t  FmPga;          // KT0803L audio gain
-uint8_t  Reserved1;
-  uint8_t  CurrentSsid;    // 0,1,2,3:  We can connect to up to four wifi access points
-  uint8_t  TotalSsid;      // Valid number of SSISs
-  uint8_t  MagicKey;       // When set to SET_SOFT_RESET value, the ESP32 wil perform a restart.
-  uint8_t  WaveformId;     // See "SimpleWaveGenerator.h" for the list of wave forms
-  uint16_t DiskTotalTracks;
-  uint16_t DiskCurrentTrack;
-  uint32_t DiskTrackResumeTime;
-  uint32_t DiskTrackResumePos;
-  uint32_t DiskTrackTotalTime;
-  uint16_t WebRadioCurrentStation;
-  uint16_t WebRadioTotalStations;
-  uint8_t  Volume;         // Volume settingsd only for debugging puposes;
-  uint8_t  VolumeSteps;    // The AM/FM application plays always on max volume
-  uint8_t  BtName[32];
-#endif
 
 void SettingsClass::EepromLoad(void) {
   DEBUG_MSG_VAL2("EEPROM type 24C%02d (size = %d bytes)\n", EEPROM_TYPE, EEPROM_SIZE);
@@ -255,11 +304,15 @@ void SettingsClass::EepromLoad(void) {
   SetWireClock();
   Read24Cxx(0, 0, NvData, sizeof(NvSettings_t));
   RestoreWireClock();
+  if(NV.Version != SETTINGS_VERSION) {
+    memset(NvData, 0xFF, sizeof(NvSettings_t)); // New version, reset to defaults
+  }
   memcpy(NvMirrorData, NvData, sizeof(NvSettings_t));
+  NV.Version = SETTINGS_VERSION;
 #if 1
   // Check for valid entries
   NV.SourceAF         = Validate(NV.SourceAF,    0,                    SET_SOURCE_MAX,      SET_SOURCE_DEFAULT);
-  NV.OutputSel        = Validate(NV.OutputSel,   0,                    SET_OUTPUT_MAX,      SET_OUTPUT_DEFAULT);
+  NV.OutputSel        = Validate(NV.OutputSel,   SET_OUTPUT_MIN,       SET_OUTPUT_MAX,      SET_OUTPUT_DEFAULT);
   NV.GridAM           = Validate(NV.GridAM,      0,                    SET_AMGRID_MAX,      SET_AMGRID_DEFAULT);
   NV.FreqAM           = CalcNearestAmChannel(0,  NV.FreqAM);
   NV.FreqFM           = Validate(NV.FreqFM,      SET_FM_FREQ_MIN,      SET_FM_FREQ_MAX,     SET_FM_FREQ_DEFAULT);
@@ -267,7 +320,10 @@ void SettingsClass::EepromLoad(void) {
   NV.AmTrim           = Validate(NV.AmTrim,      SET_AM_MOD_TRIM_MIN,  SET_AM_MOD_TRIM_MAX, SET_AM_MOD_TRIM_DEFAULT);
   NV.FmModType        = Validate(NV.FmModType,   SET_FM_MOD_STEREO,    SET_FM_MOD_MONO,     SET_FM_MOD_STEREO);
   NV.FmPga            = Validate(NV.FmPga,       SET_FM_PGA_MIN,       SET_FM_PGA_MAX,      SET_FM_PGA_DEFAULT);
+  NV.TvChannel        = Validate(NV.TvChannel,   SET_TV_CHAN_MIN,      SET_TV_CHAN_MAX,     SET_TV_CHAN_DEFAULT);
   NV.WaveformId       = Validate(NV.WaveformId,  SET_WAVE_FORM_MIN,    SET_WAVE_FORM_MAX,   SET_WAVE_DEFAULT);
+  NV.WifiTxIndex      = Validate(NV.WifiTxIndex, 0,                    SET_WIFI_TX_MAX,      SET_WIFI_TX_DEFAULT);
+  NV.BtTxIndex        = Validate(NV.BtTxIndex,   0,                    SET_BT_TX_MAX,       SET_BT_TX_DEFAULT);
   NV.VolumeSteps      = Validate(NV.VolumeSteps, SET_VOLUME_MIN,       SET_VOLUME_MAX,      SET_VOLUME_MAX);
   #if DAC_ID == DAC_ID_PT8211
     NV.Volume         = Validate(NV.Volume,      SET_VOLUME_MIN,       NV.VolumeSteps,      SET_VOLUME_DEFAULT);
@@ -286,7 +342,7 @@ void SettingsClass::EepromLoad(void) {
   if(NV.DiskTrackResumePos  == UINT32_MAX) NV.DiskTrackResumePos  = 0;
   if(NV.DiskTrackTotalTime  == UINT32_MAX) NV.DiskTrackTotalTime  = 0;
   if(NV.BtName[0] < 0x21 || NV.BtName[0] >= 127) {
-  strcpy((char*)NV.BtName, BT_DEVICE_NAME);
+    strcpy((char*)NV.BtName, BT_DEVICE_NAME);
   }
 #endif
   // Save corrected entries if necessary
@@ -294,7 +350,7 @@ void SettingsClass::EepromLoad(void) {
   // Init voltatiles
   _prevspeed       = 0;
   CurrentTrackTime = 0;
-  CurrentTrackTimeOffset = 0;
+  //CurrentTrackTimeOffset = 0;
   TotalTrackTime   = 0;
   SeekTrackTime    = 0;
   AudioEnded       = 0;
@@ -349,7 +405,7 @@ bool SettingsClass::LoadFromCard(const char * filename) {
   }
   if(!SD_read_line(f, (char *)NV.BtName, sizeof(NV.BtName))) 
   strcpy((char*)NV.BtName, BT_DEVICE_NAME); // failed: use default name  
-  Settings.EepromStore();
+  EepromStore();
   f.close();
   return true;
 }
@@ -359,6 +415,7 @@ bool SettingsClass::LoadFromCard(const char * filename) {
 #define PRINT_SETTINGS_VALUE(v,f)   Serial.printf("  " #v " = %" #f "\n", v), loop()
 
 void SettingsClass::Print(void) {
+  Serial.printf("  Settings.NV.Version = %x.%02x\n", NV.Version >> 8, NV.Version & 0xFF); loop();
   PRINT_SETTINGS_VALUE_DEC(Settings.NV.SourceAF);
   PRINT_SETTINGS_VALUE_DEC(Settings.NV.OutputSel);
   PRINT_SETTINGS_VALUE_DEC(Settings.NV.FreqAM);
@@ -368,10 +425,15 @@ void SettingsClass::Print(void) {
   PRINT_SETTINGS_VALUE_DEC(Settings.NV.AmTrim);
   PRINT_SETTINGS_VALUE_DEC(Settings.NV.FmModType);
   PRINT_SETTINGS_VALUE_DEC(Settings.NV.FmPga);
+  PRINT_SETTINGS_VALUE_DEC(Settings.NV.TvChannel);
   PRINT_SETTINGS_VALUE_DEC(Settings.NV.CurrentSsid);
   PRINT_SETTINGS_VALUE_DEC(Settings.NV.TotalSsid);
   PRINT_SETTINGS_VALUE_HEX(Settings.NV.MagicKey);
   PRINT_SETTINGS_VALUE_DEC(Settings.NV.WaveformId);
+  PRINT_SETTINGS_VALUE_DEC(Settings.NV.VidImage);
+  PRINT_SETTINGS_VALUE_DEC(Settings.NV.WifiTxIndex);
+  PRINT_SETTINGS_VALUE_DEC(Settings.NV.BtTxIndex);
+  PRINT_SETTINGS_VALUE_DEC(Settings.NV.Reserverd);
   PRINT_SETTINGS_VALUE_DEC(Settings.NV.DiskTotalTracks);
   PRINT_SETTINGS_VALUE_DEC(Settings.NV.DiskCurrentTrack);
   PRINT_SETTINGS_VALUE_DEC(Settings.NV.DiskTrackResumeTime);
@@ -382,8 +444,8 @@ void SettingsClass::Print(void) {
   PRINT_SETTINGS_VALUE(Settings.NV.BtName,s);
   PRINT_SETTINGS_VALUE_DEC(Settings.NV.Volume);
   PRINT_SETTINGS_VALUE_DEC(Settings.NV.VolumeSteps);
+  
   PRINT_SETTINGS_VALUE(Settings.CurrentTrackTime,d);
-  PRINT_SETTINGS_VALUE(Settings.CurrentTrackTimeOffset,d);
   PRINT_SETTINGS_VALUE(Settings.TotalTrackTime,d);
   PRINT_SETTINGS_VALUE(Settings.SeekTrackTime,d);
   PRINT_SETTINGS_VALUE(Settings.BootKeys,d);
@@ -394,13 +456,13 @@ void SettingsClass::Print(void) {
   PRINT_SETTINGS_VALUE(Settings.FirstTime,d);
   PRINT_SETTINGS_VALUE(Settings.FirstSong,d);
   PRINT_SETTINGS_VALUE(Settings.FmPresent,d);
-  //PRINT_SETTINGS_VALUE(Settings.FmUpdate,d);
-  //PRINT_SETTINGS_VALUE(Settings.FmReinit,d);
+  PRINT_SETTINGS_VALUE(Settings.TvPresent,d);
+  PRINT_SETTINGS_VALUE(Settings.VidPresent,d);
   PRINT_SETTINGS_VALUE(Settings.AmOffset50,d);
   PRINT_SETTINGS_VALUE(Settings.AmOffset100,d);
-  //PRINT_SETTINGS_VALUE(Settings.WifiConnected,d);
-  //PRINT_SETTINGS_VALUE(Settings.BtConnected,d);
-  PRINT_SETTINGS_VALUE(Settings.InitDAC,d);
+  PRINT_SETTINGS_VALUE(NewSourceAF,d);
+  PRINT_SETTINGS_VALUE(NewTrack,d);
+  PRINT_SETTINGS_VALUE(InitDAC,d);
 }
 
 void SettingsClass::NextPlayer(void) {
@@ -472,6 +534,44 @@ uint8_t SettingsClass::GetLogVolume(uint8_t v, uint8_t range) {
   if(v > NV.VolumeSteps) v = NV.VolumeSteps;
   int logvol = (int)range * (int)v * (int)v / (int)NV.VolumeSteps / (int)NV.VolumeSteps;
   return logvol > v ? logvol : v;
+}
+
+void SettingsClass::AdjustOutputSelect(int adj) { // Valid values are -1, 0, or 1
+  if(!FmPresent && !TvPresent) {
+    NV.OutputSel = SET_OUTPUT_AM_MASK; // Only AM possible
+    return;
+  }
+  if(FmPresent && !TvPresent) { 
+    NV.OutputSel += adj;               // Only AM & FM possible
+    if(NV.OutputSel > SET_OUTPUT_AM_FM) 
+      NV.OutputSel = SET_OUTPUT_MIN;
+    else if(NV.OutputSel < SET_OUTPUT_MIN)
+      NV.OutputSel = SET_OUTPUT_AM_FM;
+    return;
+  }
+  if(!FmPresent && TvPresent) {
+    NV.OutputSel &= ~SET_OUTPUT_FM_MASK; // Only AM & TV possible
+    if(adj == 1) {
+      switch(NV.OutputSel) {
+        case SET_OUTPUT_AM_ONLY: NV.OutputSel = SET_OUTPUT_TV_ONLY; break;
+        case SET_OUTPUT_TV_ONLY: NV.OutputSel = SET_OUTPUT_AM_TV;   break;
+        default:                 NV.OutputSel = SET_OUTPUT_AM_ONLY; break;
+      }
+    }
+    else if(adj == -1) {
+      switch(NV.OutputSel) {
+        case SET_OUTPUT_AM_ONLY: NV.OutputSel = SET_OUTPUT_AM_TV;   break;
+        case SET_OUTPUT_AM_TV:   NV.OutputSel = SET_OUTPUT_TV_ONLY; break;
+        default:                 NV.OutputSel = SET_OUTPUT_AM_ONLY; break;
+      }
+    }
+    return;
+  }
+  NV.OutputSel += adj;
+  if(NV.OutputSel > SET_OUTPUT_MAX)
+    NV.OutputSel = SET_OUTPUT_MIN;
+  else if(NV.OutputSel < SET_OUTPUT_MIN)
+    NV.OutputSel = SET_OUTPUT_MAX;
 }
 
 //==========================================================
@@ -742,7 +842,7 @@ bool TrackSettingsClass::LoadFromCard(bool keep_mounted) {
   _number_of_tracks = 0;
   _list_size        = 0;
    
-  if (!SD.begin(PIN_VSPI_SS, SPI)) {
+  if (!SD.begin(PIN_VSPI_SS, SPI, SPI_SD_SPEED)) {
     Serial.println("Card Mount Failed, Cannot read track list");
     Settings.NoCard = 1;
     return false;
