@@ -1,7 +1,7 @@
 This sketch has been built with Arduino IDE 2.3.2 and ESP32 board package 2.0.17.
 
 It should be no problem to use a newer or older IDE version, however these
-instructions are for the 2.3.2 version. In addition, the sketch will not run
+instructions are for the 2.3.2 version. However, the sketch will not run
 when compiled with ESP32 board package 3.0.0 or higher.
 
 Step 1: Download the Arduino IDE software from:
@@ -61,7 +61,7 @@ https://github.com/mathertel/OneButton
 I included those used directories directly in the project. In the previous version
 the libraries were installed separately, but it appeared that using a newer or older
 version of the library can lead to errors or unwanted behavior. Therefore, working
-versions are included in the project (in subdirectory “scr”). Please take care if
+versions are included in the project (in subdirectory “src”). Please take care if
 you plan to replace them with a different version.
           
 Please report if you encounter any problems with the libraries. 
