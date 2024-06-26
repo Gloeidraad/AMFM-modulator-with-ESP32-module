@@ -1,5 +1,6 @@
 
 #include <arduino.h>
+#include "esp_chip_info.h"
 
 #include "ChipInfo.h"
 
@@ -39,13 +40,14 @@ void PrintChipInfo(void) {
 // See: https://github.com/espressif/arduino-esp32/blob/master/cores/esp32/Esp.h
 
 void PrintChipInfo(int flags) {
+  Serial.printf("ESP_IDF_VERSION : 0x%X\n", ESP_IDF_VERSION);
   // chip info
   if(flags & 0x01) {
     Serial.printf("ESP32 Model    : %s\n", ESP.getChipModel());
   
     esp_chip_info_t chip_info;
     esp_chip_info(&chip_info);
-    Serial.printf("  Features     : ");
+    Serial.printf("  Features      : ");
     if (chip_info.features & 0x01) Serial.printf("embedded flash memory   ");
     if (chip_info.features & 0x02) Serial.printf("2.4GHz WiFi   ");
     if (chip_info.features & 0x10) Serial.printf("Bluetooth LE   ");
@@ -53,35 +55,35 @@ void PrintChipInfo(int flags) {
     if (chip_info.features & 0x40) Serial.printf("IEEE 802.15.4   ");
     if (chip_info.features & 0x80) Serial.printf("embedded psram");
     Serial.println();
-    Serial.printf("  Revision     : %d\n", chip_info.revision);
-    Serial.printf("  Cores        : %d\n", chip_info.cores);
-    Serial.printf("  Frequency    : %d MHz\n", ESP.getCpuFreqMHz());
-    Serial.printf("  SDK Version  : %s\n", ESP.getSdkVersion());
+    Serial.printf("  Revision      : %d\n", chip_info.revision);
+    Serial.printf("  Cores         : %d\n", chip_info.cores);
+    Serial.printf("  Frequency     : %d MHz\n", ESP.getCpuFreqMHz());
+    Serial.printf("  SDK Version   : %s\n", ESP.getSdkVersion());
   }
 
   // Flash
   if(flags & 0x02) {
-    Serial.printf("Flash szie     : %d\n", ESP.getFlashChipSize());
+    Serial.printf("Flash szie      : %d\n", ESP.getFlashChipSize());
   }
  
   //Internal RAM
   if(flags & 0x0C) {
-    Serial.printf("Total heap     : %d\n", ESP.getHeapSize());
-    Serial.printf("Free heap      : %d\n", ESP.getFreeHeap());
+    Serial.printf("Total heap      : %d\n", ESP.getHeapSize());
+    Serial.printf("Free heap       : %d\n", ESP.getFreeHeap());
   }
   if(flags & 0x08) {
-    Serial.printf("Min free heap  : %d\n", ESP.getMinFreeHeap());
-    Serial.printf("Max alloc heap : %d\n", ESP.getMaxAllocHeap());
+    Serial.printf("Min free heap   : %d\n", ESP.getMinFreeHeap());
+    Serial.printf("Max alloc heap  : %d\n", ESP.getMaxAllocHeap());
   }
  
   //SPI RAM
   if(flags & 0x0C) {
-    Serial.printf("Total PSRAM    : %d\n", ESP.getPsramSize());
-    Serial.printf("Free PSRAM     : %d\n", ESP.getFreePsram());
+    Serial.printf("Total PSRAM     : %d\n", ESP.getPsramSize());
+    Serial.printf("Free PSRAM      : %d\n", ESP.getFreePsram());
   }
   if(flags & 0x08) {
-    Serial.printf("Min free PSRAM : %d\n", ESP.getMinFreePsram());
-    Serial.printf("Max alloc PSRAM: %d\n", ESP.getMaxAllocPsram());
+    Serial.printf("Min free PSRAM  : %d\n", ESP.getMinFreePsram());
+    Serial.printf("Max alloc PSRAM : %d\n", ESP.getMaxAllocPsram());
   }
 }
 
