@@ -186,8 +186,6 @@ private:
         #define ESP_ARDUINO_VERSION_PATCH 0
     #endif
     
-  void            OMT_TEST();  // OMT: used for various debug purposes
-
   enum : int8_t { AUDIOLOG_PATH_IS_NULL = -1, AUDIOLOG_FILE_NOT_FOUND = -2, AUDIOLOG_OUT_OF_MEMORY = -3, AUDIOLOG_FILE_READ_ERR = -4, AUDIOLOG_ERR_UNKNOWN = -127 };
 
   void            UTF8toASCII(char* str);
