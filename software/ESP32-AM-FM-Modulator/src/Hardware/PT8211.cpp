@@ -64,11 +64,12 @@ void PT8211_Init(void) {
   PT8211_CLR_DOUT();
 }
 
-void /*IRAM_ATTR*/ PT8211_Write(int16_t left,int16_t right) {
+void PT8211_Write(int16_t left,int16_t right) {
   PT8211_CLR_WS();
   for(int i = 0; i < 16; i++) {
     PT8211_CLR_BCK();
-    (right & 0x8000) ? PT8211_SET_DOUT() : PT8211_CLR_DOUT();
+    if(right & 0x8000) PT8211_SET_DOUT(); 
+    else               PT8211_CLR_DOUT();
     PT8211_DELAY();
     PT8211_SET_BCK();
     PT8211_DELAY();
@@ -77,7 +78,8 @@ void /*IRAM_ATTR*/ PT8211_Write(int16_t left,int16_t right) {
   PT8211_SET_WS();
   for(int i = 0; i < 16; i++) {
     PT8211_CLR_BCK();
-    (left & 0x8000) ? PT8211_SET_DOUT() : PT8211_CLR_DOUT();
+    if(left & 0x8000) PT8211_SET_DOUT();
+    else              PT8211_CLR_DOUT();
     PT8211_DELAY();
     PT8211_SET_BCK();
     PT8211_DELAY();
