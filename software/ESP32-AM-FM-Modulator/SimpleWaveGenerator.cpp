@@ -13,7 +13,7 @@
  #define PIN_I2S_DOUT        27
  #define DAC_ID_PT8211       0
  #define DAC_ID_MAX98357A    1
- #define DAC_ID              DAC_ID_MAX98357A // Choose your DAC type here
+ #define DAC_ID              DAC_ID_PT8211 // Choose your DAC type here
 #endif
 
 #ifdef USE_INTERNAL_DACS
@@ -27,9 +27,7 @@
     #define I2S_COMM_FORMAT  i2s_comm_format_t(I2S_COMM_FORMAT_STAND_I2S)    // Standard Philips format 
     #define DAC_ADJUST       (int16_t)0   
   #else
-    //#define I2S_COMM_FORMAT  i2s_comm_format_t(I2S_COMM_FORMAT_STAND_I2S)    // Standard Philips format 
     #define I2S_COMM_FORMAT  i2s_comm_format_t(I2S_COMM_FORMAT_STAND_MSB)    // PT8211 format
-    //#define DAC_ADJUST       (int16_t)INT16_MIN 
     #define DAC_ADJUST       (int16_t)0 
   #endif
 #endif
@@ -64,39 +62,6 @@
 #endif
 
 #define NUMBER_OF_SAMPLES_DAC_TEST NUMBER_OF_SAMPLES_MAX
-
-//====================================== local constants ==============================================
-
-// I2S configuration structures (find in: C:\Users\[user]\AppData\Local\Arduino15\packages\esp32\hardware\esp32\2.0.3\tools\sdk\esp32\include\driver\include\driver
-static const i2s_config_t i2s_config = {
-    .mode                 = I2S_MODE,
-    .sample_rate          = 44100,
-    .bits_per_sample      = I2S_BITS_PER_SAMPLE_16BIT,  // the internal DAC module will only take the 8bits from MSB
-    .channel_format       = I2S_CHANNEL_FMT_RIGHT_LEFT,
-    .communication_format = I2S_COMM_FORMAT, 
-    .intr_alloc_flags     = ESP_INTR_FLAG_LEVEL1,       // high interrupt priority
-    .dma_buf_count        = 8,                          // 8 buffers
-    .dma_buf_len          = 1024,                       // 1K per buffer, so 8K of buffer space
-    .use_apll             = 0,
-    .tx_desc_auto_clear   = true, 
-    .fixed_mclk           = -1    
-};
- 
-// These are the physical wiring connections to our I2S decoder board/chip from the esp32, there are other connections
-// required for the chips mentioned at the top (but not to the ESP32), please visit the page mentioned at the top for
-// further information regarding these other connections.
-
-#ifdef USE_INTERNAL_DACS
-  #define I2S_PIN_CONFIG  NULL
-#else
-  static const i2s_pin_config_t pin_config = {
-    .bck_io_num   = PIN_I2S_BCK,         // The bit clock connectiom, goes to the ESP32
-    .ws_io_num    = PIN_I2S_WS,          // Word select, also known as word select or left right clock
-    .data_out_num = PIN_I2S_DOUT,        // Data out from the ESP32, connect to DIN on 38357A
-    .data_in_num  = I2S_PIN_NO_CHANGE    // we are not interested in I2S data into the ESP32
-  };
-  #define I2S_PIN_CONFIG  &pin_config
-#endif
 
 //====================================== local variables ==============================================
 
@@ -159,14 +124,60 @@ SimpleWaveGeneratorClass::SimpleWaveGeneratorClass() {
   _pause    = true;
   _samples  = NULL;
   _i2s_installed = false;
+  #if ESP_IDF_VERSION_MAJOR == 5
+    _i2s_chan_cfg.id                 = _i2s_port;
+    _i2s_chan_cfg.role               = I2S_ROLE_MASTER;        // I2S controller master role, bclk and lrc signal will be set to output
+    _i2s_chan_cfg.dma_desc_num       = 16;                     // number of DMA buffer
+    _i2s_chan_cfg.dma_frame_num      = 512;                    // I2S frame number in one DMA buffer.
+    _i2s_chan_cfg.auto_clear         = true;                   // i2s will always send zero automatically if no data to send
+    #if DAC_ID == DAC_ID_MAX98357A  // Set to enable bit shift in Philips mode
+      _i2s_std_cfg.slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO); 
+    #else                           // Set to enable bit shift in PT8211 mode
+      _i2s_std_cfg.slot_cfg = I2S_STD_MSB_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO); 
+    #endif
+    _i2s_std_cfg.gpio_cfg.bclk       = (gpio_num_t)PIN_I2S_BCK;
+    _i2s_std_cfg.gpio_cfg.din        = I2S_GPIO_UNUSED;
+    _i2s_std_cfg.gpio_cfg.dout       = (gpio_num_t)PIN_I2S_DOUT;
+    _i2s_std_cfg.gpio_cfg.mclk       = I2S_GPIO_UNUSED;
+    _i2s_std_cfg.gpio_cfg.ws         = (gpio_num_t)PIN_I2S_WS;
+    _i2s_std_cfg.gpio_cfg.invert_flags.mclk_inv = false;
+    _i2s_std_cfg.gpio_cfg.invert_flags.bclk_inv = false;
+    _i2s_std_cfg.gpio_cfg.invert_flags.ws_inv   = false;
+    _i2s_std_cfg.clk_cfg.sample_rate_hz = 44100;
+    _i2s_std_cfg.clk_cfg.clk_src        = I2S_CLK_SRC_DEFAULT;     // Select PLL_F160M as the default source clock
+    _i2s_std_cfg.clk_cfg.mclk_multiple  = I2S_MCLK_MULTIPLE_256;   // mclk = sample_rate * 256
+  #else
+    _i2s_config.mode                 = I2S_MODE;
+    _i2s_config.sample_rate          = 44100;
+    _i2s_config.bits_per_sample      = I2S_BITS_PER_SAMPLE_16BIT;  // the internal DAC module will only take the 8bits from MSB
+    _i2s_config.channel_format       = I2S_CHANNEL_FMT_RIGHT_LEFT;
+    _i2s_config.communication_format = I2S_COMM_FORMAT; 
+    _i2s_config.intr_alloc_flags     = ESP_INTR_FLAG_LEVEL1;       // high interrupt priority
+    _i2s_config.dma_buf_count        = 8;                          // 8 buffers
+    _i2s_config.dma_buf_len          = 1024;                       // 1K per buffer, so 8K of buffer space
+    _i2s_config.use_apll             = 0;
+    _i2s_config.tx_desc_auto_clear   = true; 
+    _i2s_config.fixed_mclk           = -1;    
+
+    _i2s_pin_config.bck_io_num       = PIN_I2S_BCK;       // The bit clock connectiom, goes to the ESP32
+    _i2s_pin_config.ws_io_num        = PIN_I2S_WS;        // Word select, also known as word select or left right clock
+    _i2s_pin_config.data_out_num     = PIN_I2S_DOUT;      // Data out from the ESP32, connect to DIN on 38357A
+    _i2s_pin_config.data_in_num      = I2S_PIN_NO_CHANGE; // we are not interested in I2S data into the ESP32
+  #endif
 }
 
 SimpleWaveGeneratorClass::~SimpleWaveGeneratorClass() {
   _pause = true;
   if(_i2s_installed) {
-    i2s_stop(_i2s_port);
-    delay(100);
-    i2s_driver_uninstall(_i2s_port);
+    #if ESP_IDF_VERSION_MAJOR == 5
+      i2s_channel_disable(_i2s_tx_handle);
+      delay(100);
+      i2s_del_channel(_i2s_tx_handle);
+    #else
+      i2s_stop(_i2s_port);
+      delay(100);
+      i2s_driver_uninstall(_i2s_port);
+    #endif
   }
   if(_samples != NULL) free(_samples);
   Serial.println("~SimpleWaveGeneratorClass");
@@ -178,11 +189,16 @@ void SimpleWaveGeneratorClass::Init(i2s_port_t port) {
     _samples = (samples_t *)calloc(NUMBER_OF_SAMPLES_MAX, sizeof(samples_t));
   }
   if(!_i2s_installed) {
-    i2s_driver_install(_i2s_port, &i2s_config, 0, NULL); // ESP32 will allocated resources to run I2S
-    i2s_set_pin(_i2s_port, I2S_PIN_CONFIG);              // Tell it the pins you will be using 
+    #if ESP_IDF_VERSION_MAJOR == 5
+      _i2s_chan_cfg.id = _i2s_port;
+      i2s_new_channel(&_i2s_chan_cfg, &_i2s_tx_handle, NULL);
+      i2s_channel_init_std_mode(_i2s_tx_handle, &_i2s_std_cfg);
+    #else
+      i2s_driver_install(_i2s_port, &_i2s_config, 0, NULL); // ESP32 will allocated resources to run I2S
+      i2s_set_pin(_i2s_port, &_i2s_pin_config);            // Tell it the pins you will be using 
+    #endif
     _i2s_installed = true;
   }
-  Serial.println("SimpleWaveGeneratorClass::Init(i2s_port_t port)");
   _pause = true;
 }
 
@@ -195,9 +211,9 @@ void SimpleWaveGeneratorClass::Volume(int vol, bool start) {
   if(start) Start(_current_wave_form); // Recalculate waveform...
 }
 
-void SimpleWaveGeneratorClass::Start(int waveform) {
+void SimpleWaveGeneratorClass::Start(int waveform, bool autoplay) {
   bool cur_pause = _pause;
-  _pause = false;
+  _pause = true;
   switch(waveform) {
     case WAVEFORM_SINE_440HZ: CreateSineWave(samples, _current_number_of_samples = NUMBER_OF_SAMPLES_440HZ); 
                               _current_sample_rate = SAMPLE_RATE_440HZ;
@@ -223,18 +239,29 @@ void SimpleWaveGeneratorClass::Start(int waveform) {
     default                 : _current_wave_form = WAVEFORM_NONE; // Not a valid waveform, so exit without install.
                               return; 
   }
-  i2s_set_sample_rates(_i2s_port, _current_sample_rate);
+  #if ESP_IDF_VERSION_MAJOR == 5
+    i2s_channel_disable(_i2s_tx_handle);
+    _i2s_std_cfg.clk_cfg.sample_rate_hz = _current_sample_rate;
+    i2s_channel_reconfig_std_clock(_i2s_tx_handle, &_i2s_std_cfg.clk_cfg);
+    i2s_channel_enable(_i2s_tx_handle);
+  #else
+    i2s_set_sample_rates(_i2s_port, _current_sample_rate);
+  #endif
   _current_wave_form = waveform;
-  _pause = cur_pause;
+  if(autoplay)
+    _pause = false;
+  else
+    _pause = cur_pause;
 }
-
-void SimpleWaveGeneratorClass::Pause(void)   { _pause = true; }
-void SimpleWaveGeneratorClass::Resume(void)  { _pause = false; }
 
 void SimpleWaveGeneratorClass::loop(void) {
   if(_current_wave_form >= 0 && !_pause) { 
     size_t BytesWritten; 
-    i2s_write(_i2s_port, samples, _current_number_of_samples * sizeof(samples_t), &BytesWritten, portMAX_DELAY );
+    #if ESP_IDF_VERSION_MAJOR == 5
+      i2s_channel_write(_i2s_tx_handle, samples, _current_number_of_samples * sizeof(samples_t), &BytesWritten, portMAX_DELAY);
+    #else
+      i2s_write(_i2s_port, samples, _current_number_of_samples * sizeof(samples_t), &BytesWritten, portMAX_DELAY );
+    #endif
     if(_current_wave_form == WAVEFORM_DAC_TEST)
       CreateDacTestWave(samples, _current_number_of_samples); // update the buffer with new values
   }
