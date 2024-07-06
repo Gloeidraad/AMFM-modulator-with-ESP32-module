@@ -5,11 +5,11 @@ instructions are for the 2.3.2 version. However, the sketch will not run
 when compiled with ESP32 board package 3.0.0 or higher.
 
 Step 1: Download the Arduino IDE software from:
-        https://www.arduino.cc/en/software 
+        [https://www.arduino.cc/en/software](https://www.arduino.cc/en/software) 
         (Possibly scroll down on the page for 2.3.2)
  
 Step 2: Open Arduino IDE and install the ESP32 packages:
-        https://randomnerdtutorials.com/installing-the-esp32-board-in-arduino-ide-windows-instructions/
+        [https://randomnerdtutorials.com/installing-the-esp32-board-in-arduino-ide-windows-instructions/](https://randomnerdtutorials.com/installing-the-esp32-board-in-arduino-ide-windows-instructions/)
         (Remark: the few seconds they mentioned to install the
         package is actually a couple of minutes, so be patient)
 
