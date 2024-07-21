@@ -2,7 +2,7 @@ This is an MP3 player, Web-radio player, Bluetooth player, and simple waveform g
 The output is connected to a simple FM/AM modulator. The player is intended for collectors and enthusiasts of old
 (tube) radios.
 
-The original design (V1.5) has been made with KiCad 7.0. The updated desing (V1.7) has been made with KiCad 8.0.
+The original design (V1.5) has been made with KiCad 7.0. The updated design (V1.7) has been made with KiCad 8.0.
 
 I also added some of the specific 3D models.
 
