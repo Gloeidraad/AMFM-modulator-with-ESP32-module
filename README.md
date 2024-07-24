@@ -11,6 +11,6 @@ few meters, building it is at your own risk.
 
 Additional information can be found at: 
 
-https://www.transistorforum.nl/forum/index.php?id=77783
+https://www.transistorforum.nl/forum/index.php?id=77783 and https://www.transistorforum.nl/forum/index.php?mode=entry&id=82213
 
 It is in Dutch, so please use some translate program...
