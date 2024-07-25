@@ -1,0 +1,1 @@
+Unzip PLL_AM_OSC_1_7.zip in folder 3D before opening PLL_AM_OSC_1_7_ASSY.kicad_pro
