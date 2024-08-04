@@ -1,1 +1,10 @@
+Here you find some STEP files for 3D printing your own housing for the ESP32 Player. 
+There are two options:
 
+1 - Just print "Case Body-100mm.STEP" for a simple housing.
+2 - "Print Case Body-96mm.STEP", two times "Case Bezel Outer Half.STEP", and two times "Case Bezel Inner Half.STEP"
+
+Option 2 gives you a nicer finish, but need more work. In addition you can customize your housing by using different colors
+for the body and the bezels. There are some images included to give you an impression.
+
+Both versions still need front and back panels.
