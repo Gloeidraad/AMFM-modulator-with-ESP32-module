@@ -3788,7 +3788,7 @@
 				(hide yes)
 			)
 		)
-		(property "Footprint" "MountingHole:MountingHole_3.5mm"
+		(property "Footprint" "!Gloeidraad:MountingSlot_3.5x4.0mm"
 			(at 149.86 151.13 0)
 			(effects
 				(font
@@ -4216,7 +4216,7 @@
 				(hide yes)
 			)
 		)
-		(property "Footprint" "MountingHole:MountingHole_3.5mm"
+		(property "Footprint" "!Gloeidraad:MountingSlot_3.5x4.0mm"
 			(at 135.89 151.13 0)
 			(effects
 				(font
