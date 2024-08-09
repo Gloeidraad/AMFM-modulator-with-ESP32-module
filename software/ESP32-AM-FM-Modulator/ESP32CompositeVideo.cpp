@@ -45,9 +45,9 @@ void ESP32CompositeVideo_Class::SendCommand(const char * cmd, const char * param
     SetWireClock();
     _wire->flush();
     _wire->beginTransmission(ESP32_COMP_VIDEO_I2C_ADDRESS);
-    _wire->write(cmd);
+    _wire->write((uint8_t *)cmd, strlen(cmd));
     if(param != NULL)
-      _wire->write(param);
+      _wire->write((uint8_t *)param, strlen(param));
     _wire->write('\0');
     _wire->endTransmission();
     if(_wire->requestFrom(ESP32_COMP_VIDEO_I2C_ADDRESS, (uint8_t)1) == 1) {

@@ -123,7 +123,7 @@ void DisplayClass::SetTimeString(const char *s)  { strcpy(_time_string, s);  _ti
   D_STRING s_Welcome[] = { "  Welcome to",
                            "  ESP32 AM/FM",
                            "  Radio Station",
-                           SOFTWARE_VERSION
+                           SOFTWARE_VERSION SOFTWARE_SUBVERSION
                          }; 
 
 //******************************************************//

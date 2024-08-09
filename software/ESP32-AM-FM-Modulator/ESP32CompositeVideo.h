@@ -28,7 +28,9 @@ class ESP32CompositeVideo_Class {
      void ShowImage(uint8_t _image);
      void SetTextLineA(const char *s, uint8_t append = 0);
      void SetTextLineB(const char *s, uint8_t append = 0);
-     void SendCommand(const char * cmd, const char * param = NULL);
+     //void SendCommand(const unsigned char * cmd, const unsigned char * param = NULL);
+     //void SendCommand(const uint8_t * cmd, const uint8_t * param = NULL);
+     void SendCommand(const char * cmd, const char *  param = NULL);
   protected:
     void SetWireClock(void)     { if(_prevspeed != ESP32_COMP_VIDEO_I2C_CLOCK_SPEED) _wire->setClock(ESP32_COMP_VIDEO_I2C_CLOCK_SPEED); }
     void RestoreWireClock(void) { if(_prevspeed != ESP32_COMP_VIDEO_I2C_CLOCK_SPEED) _wire->setClock(_prevspeed); }
