@@ -299,16 +299,18 @@ void SettingsClass::doSoftRestart(void) {
 }
 
 void SettingsClass::EepromLoad(void) {
+  const char * subversion = SOFTWARE_SUBVERSION;
   DEBUG_MSG_VAL2("EEPROM type 24C%02d (size = %d bytes)\n", EEPROM_TYPE, EEPROM_SIZE);
   // Read from EEPROM
   SetWireClock();
   Read24Cxx(0, 0, NvData, sizeof(NvSettings_t));
   RestoreWireClock();
-  if(NV.Version != SETTINGS_VERSION) {
+  if(NV.Version != SETTINGS_VERSION || NV.Subversion != subversion[0]) {
     memset(NvData, 0xFF, sizeof(NvSettings_t)); // New version, reset to defaults
   }
   memcpy(NvMirrorData, NvData, sizeof(NvSettings_t));
-  NV.Version = SETTINGS_VERSION;
+  NV.Version    = SETTINGS_VERSION;
+  NV.Subversion = subversion[0];
 #if 1
   // Check for valid entries
   NV.SourceAF         = Validate(NV.SourceAF,    0,                    SET_SOURCE_MAX,      SET_SOURCE_DEFAULT);
@@ -433,7 +435,7 @@ void SettingsClass::Print(void) {
   PRINT_SETTINGS_VALUE_DEC(Settings.NV.VidImage);
   PRINT_SETTINGS_VALUE_DEC(Settings.NV.WifiTxIndex);
   PRINT_SETTINGS_VALUE_DEC(Settings.NV.BtTxIndex);
-  PRINT_SETTINGS_VALUE_DEC(Settings.NV.Reserverd);
+  PRINT_SETTINGS_VALUE_HEX(Settings.NV.Subversion);
   PRINT_SETTINGS_VALUE_DEC(Settings.NV.DiskTotalTracks);
   PRINT_SETTINGS_VALUE_DEC(Settings.NV.DiskCurrentTrack);
   PRINT_SETTINGS_VALUE_DEC(Settings.NV.DiskTrackResumeTime);

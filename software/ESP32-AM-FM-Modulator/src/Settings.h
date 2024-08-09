@@ -180,7 +180,7 @@ typedef struct {
   uint8_t  VidImage;        // Image number on optimal video module
   uint8_t  WifiTxIndex;     // Index in wifi tabel with TX levels
   uint8_t  BtTxIndex;       // Index in bluetooth tabel with TX levels
-  uint8_t  Reserverd;
+  uint8_t  Subversion;      // expansion of Version
   uint16_t DiskTotalTracks;
   uint16_t DiskCurrentTrack;
   uint32_t DiskTrackResumeTime;
