@@ -5,6 +5,10 @@
 #include "SimpleWaveGenerator.h"
 #include "Player.h"
 
+#if ESP_IDF_VERSION_MAJOR == 5
+#include "ESP_I2S.h" 
+#endif
+
 #define BT_ACTIVITY_TIMER   10  // in 10 ms slots
 
 #define BLUETOOTH_VOLUME_MIN  24
@@ -223,6 +227,18 @@ void PlayerClass::Start(bool autoplay) {
                                  Settings.InitDAC = 1;
                                  break;
     case SET_SOURCE_BLUETOOTH  : Display.ShowHelpLine("Setting up Bluetooth");
+#if ESP_IDF_VERSION_MAJOR == 5  // OMT: under development
+#error
+static I2SClass i2s;
+_a2dp_sink = new BluetoothA2DPSink(i2s);
+i2s.setPins(PIN_I2S_BCK, PIN_I2S_WS, PIN_I2S_DOUT);
+if(!i2s.begin(I2S_MODE_STD, 44100, I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO, I2S_STD_SLOT_BOTH)) {
+  Serial.println("Failed to initialize I2S!");
+  while (1); // do nothing
+}
+_a2dp_sink->start("MyMusic");
+
+#else
                                  _a2dp_sink = new BluetoothA2DPSink;
                                  if(_a2dp_sink == NULL)
                                    Serial.println("Error creating BluetoothA2DPSink");
@@ -262,6 +278,7 @@ void PlayerClass::Start(bool autoplay) {
                                    //_a2dp_sink->set_volume(BLUETOOTH_VOLUME_MAX);
                                    Display.ShowHelpLine((const char *)Settings.NV.BtName);
                                  }
+#endif
                                  _activity_counter = 0;
                                  break;
     case SET_SOURCE_WEB_RADIO  :{uint64_t timestamp_us = esp_timer_get_time();

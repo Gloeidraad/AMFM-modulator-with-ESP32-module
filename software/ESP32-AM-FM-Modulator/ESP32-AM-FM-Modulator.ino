@@ -4,8 +4,8 @@
 
 #include <esp_idf_version.h>
 
-#if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(4, 0, 0)
-  #error Cannot be built with version 1.0.6 or older
+#if (ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(4, 0, 0)) || (ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0))
+  #error Cannot be built with version 1.0.6 or older or version 3.0.0 or newer
 #endif
 
 #include <driver/dac.h>
