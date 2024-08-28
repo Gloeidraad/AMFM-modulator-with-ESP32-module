@@ -357,7 +357,7 @@ static int MenuTime(int function) {
   }
   switch(function) {
     case MENU_FUNC_INIT     : MENU_DEBUG("MenuTime: INIT\n");
-                              if(Settings.NV.SourceAF != SET_SOURCE_SD_CARD || Settings.NoCard)
+                              if(Settings.NV.SourceAF != SET_SOURCE_SD_CARD || Settings.NoCard || Settings.NV.DiskTotalTracks == 0)
                                 return MENU_RESULT_EXIT; // go to next menu item
 
                               SD_Audio = Player.GetAudioPlayer();

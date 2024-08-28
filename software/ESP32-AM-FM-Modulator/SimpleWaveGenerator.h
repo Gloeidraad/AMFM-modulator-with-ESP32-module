@@ -2,16 +2,15 @@
 #define _SIMPLEWAVEGENERATOR_H_
 
 // How to use:
-//   Set the correct pins and DAC type in SimpleWaveGenerator.cpp
-//   Make an instance of the class. For example in the main .ino file:
-//   SimpleWaveGeneratorClass WaveGenerator;
+// Set the correct pins and DAC type in SimpleWaveGenerator.cpp
+// Make an instance of the class. For example in the main .ino file:
+// SimpleWaveGeneratorClass WaveGenerator;
 //
 // Start the player with:
 //   WaveGenerator.Init();
 //   WaveGenerator.Start(WAVEFORM_SINE_440HZ, true); // Or another of the waveforms declared below
 // or
-//   WaveGenerator.Init();
-//   WaveGenerator.Start(WAVEFORM_SINE_440HZ); // Or another of the waveforms declared below
+//   WaveGenerator.Start(WAVEFORM_SINE_440HZ);      // Or another of the waveforms declared below
 //   WaveGenerator.Resume();
 //
 // You can pause the player with:
@@ -23,7 +22,7 @@
   #include <driver/i2s.h>      // Library of legacy I2S routines, comes with ESP32 standard install
 #endif
 
-//#define USE_INTERNAL_DACS  // REM: Not tested with ESP_IDF_VERSION_MAJOR == 5
+//#define USE_INTERNAL_DACS
 //#define NO_WAVE_INFO
 
 #define WAVEFORM_NONE       -1
@@ -47,7 +46,7 @@ class SimpleWaveGeneratorClass {
     void Pause(void)  { _pause = true;  }
     void Resume(void) { _pause = false; }
     void loop(void);
-    void Volume(int vol, bool start); // 0 .. WAVEFORM_VOLUME_MAX
+    void Volume(int vol); // 0 .. WAVEFORM_VOLUME_MAX
     #ifndef NO_WAVE_INFO
       const char *GetWaveformName(int id);
       const char *GetWaveformName() {return GetWaveformName(_current_wave_form); }
@@ -61,6 +60,7 @@ class SimpleWaveGeneratorClass {
     void CreateDacTestWave(samples_t * dest, int samples);
     void CreateDacTestMin(samples_t * dest, int samples);
     void CreateDacTestMax(samples_t * dest, int samples);
+    bool CreateWaveform(int waveform);
     
     i2s_port_t _i2s_port;
     int  _volume; 

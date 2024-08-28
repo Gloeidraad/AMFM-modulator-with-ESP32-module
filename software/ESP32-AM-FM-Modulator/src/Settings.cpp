@@ -878,7 +878,10 @@ bool TrackSettingsClass::LoadFromCard(bool keep_mounted) {
   }
   _root.close();
 }
-  Serial.printf("found %d audio files, (list memory usage %d of %d, average file name size %d)\n", _number_of_tracks, _list_size, _list_max_size, _list_size / _number_of_tracks);
+  if(_number_of_tracks > 0)
+    Serial.printf("found %d audio files, (list memory usage %d of %d, average file name size %d)\n", _number_of_tracks, _list_size, _list_max_size, _list_size / _number_of_tracks);
+  else
+    Serial.println("no audio files found on card");
   Settings.NV.DiskTotalTracks = _number_of_tracks;
   if (Settings.NV.DiskCurrentTrack > Settings.NV.DiskTotalTracks) {
     Settings.NV.DiskCurrentTrack = 1;

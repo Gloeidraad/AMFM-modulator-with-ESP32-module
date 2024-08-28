@@ -1,8 +1,8 @@
 
-
 #include "Display.h"
 
 #include "src/Version.h"
+#include "src/Hardware/board.h"
 #include "src/Hardware/NFOR_SSD1306.h"
 #include "src/settings.h"
 #include "SimpleWaveGenerator.h"
@@ -13,7 +13,7 @@
 
 #define D_STRING static const char * const
 
-D_STRING s_Help[]    = {
+D_STRING s_Help[] = {
   "",
   "WiFi Connect failed!",
   "WiFi Connected!",
@@ -22,7 +22,8 @@ D_STRING s_Help[]    = {
   "Initializing Webradio",
   "Card Failure",
   "No Tracks Found",
-  "Cannot connect to Wifi network: ",                        
+  "Cannot connect to Wifi network: ",
+  "No Web Stations Found",
 };
 
 static void SerialPrint(const char *s1, const char *s2) {
@@ -138,7 +139,7 @@ DisplayClass::DisplayClass() {
 }
 
 void DisplayClass::Initialize(bool reboot) {
-  OLED.init(Wire, reboot ? 1 : 0);
+  OLED.init(Wire, reboot ? 1 : OLED_ROTATE_FLAG);
   OLED.SetLineRow(MENU_LINE_1, PLAYER_NAME_LINE);
   OLED.SetLineRow(MENU_LINE_2, PLAYER_PLAY_LINE);
   OLED.SetLineRow(MENU_LINE_3, STATUS_LINE1);

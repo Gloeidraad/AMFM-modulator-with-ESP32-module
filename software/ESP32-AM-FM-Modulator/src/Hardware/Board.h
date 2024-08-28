@@ -28,6 +28,7 @@
 
 #define I2C_HIGH_CLOCK_SPEED  400000
 #define I2C_LOW_CLOCK_SPEED   100000
+#define OLED_ROTATE_FLAG      0         // 0 = no rotation, 4 = rotate 180 degrees
 
 #define SPI_SD_SPEED          25000000  // 25 MHz
 #define AUDIO_HEADER_TIMEOUT  7500      // in milliseconds

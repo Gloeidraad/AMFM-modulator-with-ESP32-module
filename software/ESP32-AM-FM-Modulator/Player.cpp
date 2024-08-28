@@ -1,4 +1,3 @@
-
 #include "src/ChipInfo.h"
 #include "esp_wifi.h"
 #include "Display.h"
@@ -13,6 +12,9 @@
 
 #define BLUETOOTH_VOLUME_MIN  24
 #define BLUETOOTH_VOLUME_MAX  127
+
+#define WAVEFORM_VOLUME WAVEFORM_VOLUME_MAX  // Use always the maximum
+//#define WAVEFORM_VOLUME Settings.GetLogVolume(WAVEFORM_VOLUME_MAX) // Use volume from Settings
 
 static void AudioDieOut(Audio * _audio, int loops = 100) {
   if(_audio == NULL) return;
@@ -209,6 +211,10 @@ void PlayerClass::Start(bool autoplay) {
                                    Display.ShowHelpLine(DISPLAY_HELP_NO_CARD, true);
                                    Settings.Play = 0;
                                  }
+                                 else if(Settings.NV.DiskTotalTracks == 0) {
+                                   Display.ShowHelpLine(DISPLAY_HELP_NO_TRACKS_FOUND, true);
+                                   Settings.Play = 0;
+                                 }
                                  else {
                                    Display.ShowHelpLine(Settings.Play ? DISPLAY_HELP_NONE : DISPLAY_HELP_PRESS_PLAY_TO_START, true);
                                    Settings.FirstSong = 1;
@@ -305,10 +311,14 @@ _a2dp_sink->start("MyMusic");
                                    Serial.println(" CONNECTED");
                                    if(Settings.Play)
                                      Display.ShowHelpLine(DISPLAY_HELP_WIFI_CONNECTED, true);
-                                   else
-                                     Display.ShowHelpLine(DISPLAY_HELP_PRESS_PLAY_TO_START, true);
+                                   else {
+                                     if(Settings.NV.WebRadioTotalStations > 0)  
+                                       Display.ShowHelpLine(DISPLAY_HELP_PRESS_PLAY_TO_START, true);
+                                     else
+                                       Display.ShowHelpLine(DISPLAY_HELP_URLS_FOUND, true);
                                      //Display.ShowHelpLine("PRESS_PLAY_TO_START", true);
                                    //Settings.WifiConnected = 1;
+                                   }
                                  }
                                  _audio = new Audio;
                                  _audio->setPinout(PIN_I2S_BCK, PIN_I2S_WS, PIN_I2S_DOUT);
@@ -323,7 +333,7 @@ _a2dp_sink->start("MyMusic");
     
     case SET_SOURCE_WAVE_GEN   : _waveform_player = new SimpleWaveGeneratorClass;
                                  _waveform_player->Init();
-                                 _waveform_player->Volume(Settings.GetLogVolume(WAVEFORM_VOLUME_MAX),false);
+                                 _waveform_player->Volume(WAVEFORM_VOLUME); 
                                  break;
     default: break;
   }
@@ -336,7 +346,7 @@ _a2dp_sink->start("MyMusic");
 
 void PlayerClass::Play(void) {
   switch(Settings.NV.SourceAF) {
-    case SET_SOURCE_SD_CARD    : if(Settings.NoCard)
+    case SET_SOURCE_SD_CARD    : if(Settings.NoCard || Settings.NV.DiskTotalTracks == 0)
                                    break;
                                  else {
                                    if(Settings.FirstSong) {
@@ -358,7 +368,8 @@ void PlayerClass::Play(void) {
                                  Settings.Play = 0; // omt
                                  Display.ShowPlayPause(0);
                                  break;
-    case SET_SOURCE_WEB_RADIO  : if(WiFi.isConnected()) {
+    case SET_SOURCE_WEB_RADIO  : if(Settings.NV.WebRadioTotalStations == 0) break;
+                                 if(WiFi.isConnected()) {
                                    web_station_t web_station;
                                    UrlSettings.GetStation(Settings.NV.WebRadioCurrentStation, web_station);
                                    Serial.printf("**********start a new radio: %s\n",web_station.url);
@@ -375,7 +386,7 @@ void PlayerClass::Play(void) {
                                  Serial.println("**********new radio started************");
                                  Settings.WebTitleReceived = 0;
                                  break;
-    case SET_SOURCE_WAVE_GEN   : _waveform_player->Volume(SET_VOLUME_DEFAULT,false); 
+    case SET_SOURCE_WAVE_GEN   : _waveform_player->Volume(WAVEFORM_VOLUME); 
                                  _waveform_player->Start(Settings.NV.WaveformId);
                                  Settings.Play = 1;
                                  Settings.CurrentTrackTime = 0;
@@ -551,7 +562,8 @@ static void PrintSdDebug(Audio * _audio) {
 
 void PlayerClass::PauseResume(void) {
   switch(Settings.NV.SourceAF) {
-    case SET_SOURCE_SD_CARD    : Settings.Play = !_audio->isRunning();
+    case SET_SOURCE_SD_CARD    : if(Settings.NV.DiskTotalTracks == 0) break;
+                                 Settings.Play = !_audio->isRunning();
                                  Serial.printf("PLAY/RESUME %d\n", (int)Settings.Play); 
                                  _audio->pauseResume();
                                  Display.ShowPlayPause(Settings.Play);
@@ -577,7 +589,8 @@ void PlayerClass::PauseResume(void) {
                                    Display.ShowPlayPause(0);
                                  }
                                  break;
-    case SET_SOURCE_WEB_RADIO  : Settings.Play = !_audio->isRunning();
+    case SET_SOURCE_WEB_RADIO  : if(Settings.NV.WebRadioTotalStations == 0) break;
+                                 Settings.Play = !_audio->isRunning();
                                  _audio->pauseResume();
                                  Display.ShowPlayPause(Settings.Play);
                                  break;

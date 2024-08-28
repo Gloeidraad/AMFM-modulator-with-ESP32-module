@@ -525,7 +525,7 @@ void setup(void) {
   SW4.attachClick(SW4_HandleClick);
   SW5.attachClick(SW5_HandleClick);
 
-  if (Settings.BootKeys == 0x12) {
+  if (Settings.BootKeys == 0x12) { // UP & MENU
     Settings.EepromErase();        // Use this when settings have got corrupted
   }
   Settings.EepromLoad();           // Get the primary settings form EEPROM

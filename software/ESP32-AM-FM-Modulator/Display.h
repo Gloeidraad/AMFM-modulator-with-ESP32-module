@@ -12,6 +12,7 @@
 #define DISPLAY_HELP_NO_CARD                 (uint8_t)6
 #define DISPLAY_HELP_NO_TRACKS_FOUND         (uint8_t)7
 #define DISPLAY_HELP_WIFI_CONNECT_FAILED_ID  (uint8_t)8
+#define DISPLAY_HELP_URLS_FOUND              (uint8_t)9
 
 class DisplayClass {
     
@@ -53,6 +54,7 @@ class DisplayClass {
     void ShowMenuStrings(const char *s1, const char *s2, const char *s3);
 
     void ShowFrequencies(void);
+    void ShowVolume(void); // for future use
 
     void loop(uint32_t timestamp);
 

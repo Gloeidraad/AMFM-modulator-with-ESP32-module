@@ -24,7 +24,7 @@ class PlayerClass {
     void SetVolume(int vol) {
       if(vol > Settings.NV.VolumeSteps) vol = Settings.NV.VolumeSteps;
       if(_audio != NULL)           _audio->setVolume(vol);
-      if(_waveform_player != NULL) _waveform_player->Volume(vol,true);
+      if(_waveform_player != NULL) _waveform_player->Volume(vol);
       if(_a2dp_sink != NULL)       _a2dp_sink->set_volume(vol);
       Settings.NV.Volume = vol;
     }
