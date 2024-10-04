@@ -93,6 +93,8 @@
 #define KEY_UP           2
 #define KEY_OK           3
 #define KEY_MENU         4
+#define KEY_LONG_DN      11
+#define KEY_LONG_UP      12
 #define KEY_NONE         0xFF
 
 #define BOOT_KEY1_MASK   0x01
@@ -110,8 +112,8 @@
 #define TIMESTAMP_BASE_RATE   1000000   // Microseconds rate (1 MHz)
 #define TIMESTAMP_RATE_10MS   100       // for 100 Hz (10 ms period) rate
 #define TIMESTAMP_RATE_100MS  10        // for 100 Hz (10 ms period) rate
-#define TIMESTAMP_10MS_DIV  (TIMESTAMP_BASE_RATE / TIMESTAMP_RATE_10MS) 
-#define TIMESTAMP_100MS_DIV (TIMESTAMP_BASE_RATE / TIMESTAMP_RATE_100MS) 
+#define TIMESTAMP_10MS_DIV   (TIMESTAMP_BASE_RATE / TIMESTAMP_RATE_10MS) 
+#define TIMESTAMP_100MS_DIV  (TIMESTAMP_BASE_RATE / TIMESTAMP_RATE_100MS) 
 
 //=====================
 //==  Useful Macros  ==

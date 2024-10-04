@@ -344,7 +344,7 @@ void DisplayClass::ShowFrequencies(void) {
   InfoString1[0] = 0;
   InfoString2[0] = 0;
   OLED.setline(STATUS_LINE1, 0); 
-  OLED.setline(STATUS_LINE2, 0); 
+  OLED.setline(STATUS_LINE2, 0);
   switch(Settings.NV.OutputSel) {
     case SET_OUTPUT_AM_ONLY: Settings.AmFreqToString(InfoString2, "AM:");
                              break;
@@ -382,6 +382,8 @@ void DisplayClass::ShowMenuString(uint8_t y, const char *s, uint8_t font) {
     OLED.puts_xy(0, y, s, font);
   }
 }
+
+uint8_t DisplayClass::MenuStringMax() { return SSD1306_Fonts[SSD1306_FONT_5X8_NARROW].u8LineLength; }
 
 void DisplayClass::ShowMenuStrings(const char *s1, const char *s2, const char *s3){
   ShowMenuString(MENU_LINE_1, s1, SSD1306_FONT_8X8);

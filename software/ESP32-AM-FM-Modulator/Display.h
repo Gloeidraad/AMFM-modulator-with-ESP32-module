@@ -55,8 +55,11 @@ class DisplayClass {
 
     void ShowFrequencies(void);
     void ShowVolume(void); // for future use
+    void ShowVolume(uint8_t vol, uint8_t max);
 
     void loop(uint32_t timestamp);
+
+    uint8_t MenuStringMax();
 
   protected:
     void ShowLine(uint8_t y, const char *s, uint8_t font, bool no_queue = false);

@@ -33,13 +33,10 @@ class PlayerClass {
     void SD_PrintDebug(void);
     void WP_PrintDebug(bool hex = false) { if(_waveform_player != NULL) _waveform_player->Print(hex); }
     Audio * GetAudioPlayer() { return _audio; }
-    //void SetupPlayerDisplay(bool no_queue = false);
     void PositionEntry(void);
     void NewSsid(void);
     
   protected:
-    //void StopPlayer(void);
-    //void StartPlayer(void);
     bool PlayTrackFromSD(int n, uint32_t resume_pos = 0, uint32_t resume_time = 0, uint32_t track_time = 0, uint32_t total_time = 0);
  
     void (*_loop)(void);

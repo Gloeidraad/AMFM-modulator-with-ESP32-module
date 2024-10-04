@@ -63,7 +63,10 @@ bool PlayerClass::PlayTrackFromSD(int n, uint32_t resume_pos, uint32_t resume_ti
   }
   String track(TrackSettings.GetTrackName(n));
   Serial.printf("Starting [%d]: \"%s\" at %d (%ds)\n", n, track.c_str(), resume_pos, resume_time);
-  Display.ShowTrackTitle(track.c_str());
+  int i = track.lastIndexOf('.');        // Find the location of the file extension
+  if(i > 0) track[i] = '\0';             // Remove the extension
+  Display.ShowTrackTitle(track.c_str()); // Show track without ".mp3" extension
+  if(i > 0) track[i] = '.';              // Restore the extension
   _audio->connecttoFS(SD, track.c_str(), resume_pos);
   // Fix positioning if resume_pos fails (run until AudioCurrentTime is valid, then reposition if necessary)
   #if 1
