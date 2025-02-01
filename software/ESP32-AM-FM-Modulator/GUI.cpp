@@ -347,13 +347,13 @@ static int MenuStation(int function) {
     return GUI_RESULT_TIMEOUT;  // Terminate this menu as soon a new station has been chosen
   return GUI_RESULT_NOP;
 }
-#endif
+
 /*****************************************************************************/
 /*  Track Time menu                                                          */
 /*****************************************************************************/
 
 static struct {
-   unsigned char flag_play   : 1;
+   unsigned char flag_play   : 1;                                                                                                           
    unsigned char flag_select : 1;
    uint8_t       seconds     : 6;
    uint32_t      max_minutes;
